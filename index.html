@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Acceso · Motor rotativo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -267,16 +268,29 @@
       <h1>Acceso al sistema</h1>
       <p class="sub">Ingresa para arrancar el motor.</p>
       <div class="field">
-        <label for="user">Usuario</label>
-        <input id="user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="tu usuario">
+        <label for="user">Correo electrónico</label>
+        <input id="user" type="email" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="tu@correo.cl">
       </div>
       <div class="field">
         <label for="pass">Clave</label>
         <input id="pass" type="password" autocomplete="current-password" placeholder="••••••••">
       </div>
-      <button id="go" type="button">Ingresar</button>
+      <button id="go" type="button" disabled>Conectando…</button>
+      <button id="forgot" type="button" style="margin-top:12px" disabled>Olvidé mi contraseña</button>
       <p class="err" id="err" role="alert"></p>
-      <p class="demo">Demo: usuario <b>avia</b> · clave <b>rotor</b></p>
+      
+    </section>
+
+    <section id="recoveryView" class="view" hidden>
+      <h1>Nueva contraseña</h1>
+      <p class="sub">Elige una contraseña de al menos 12 caracteres.</p>
+      <label for="newPass">Contraseña</label>
+      <input id="newPass" type="password" autocomplete="new-password" minlength="12">
+      <label for="confirmPass">Repetir contraseña</label>
+      <input id="confirmPass" type="password" autocomplete="new-password" minlength="12">
+      <button id="savePass" type="button" style="margin-top:20px">Guardar contraseña</button>
+      <button id="cancelRecovery" type="button" style="margin-top:12px">Volver al acceso</button>
+      <p class="err" id="recoveryErr" role="alert"></p>
     </section>
 
     <!-- Vista de arranque -->
@@ -295,8 +309,7 @@
 
 <script>
 (() => {
-  /* ===== Configuración: cambia aquí usuario y clave ===== */
-  const AUTH = { user: 'avia', pass: 'rotor' };
+  // La identidad se verifica con Supabase; no hay claves de usuarios en el frontend.
 
   /* ===== Geometría del motor ===== */
   const NS = 'http://www.w3.org/2000/svg';
@@ -530,6 +543,7 @@
   }
 
   async function startEngine(name) {
+    const current = revision;
     busy = true;
     errEl.textContent = '';
     loginView.hidden = true;
@@ -537,56 +551,162 @@
     logEl.innerHTML = ''; welcome.textContent = ''; logout.hidden = true;
 
     const l1 = addLog('Contacto · batería correcta');
-    await wait(500); mark(l1);
+    await wait(500); if (current !== revision) return; mark(l1);
 
     const l2 = addLog('Motor de arranque girando');
     S.cranking = true;
-    await tween(250, 1100, ease.out);
-    await wait(650);
+    await tween(250, 1100, ease.out); if (current !== revision) return;
+    await wait(650); if (current !== revision) return;
     mark(l2);
 
     const l3 = addLog('Ignición');
     S.cranking = false; S.firing = true;
     svg.classList.add('running');
-    await tween(2300, 450, ease.out);
-    await tween(6800, 1300, ease.inOut);
-    await wait(250);
+    await tween(2300, 450, ease.out); if (current !== revision) return;
+    await tween(6800, 1300, ease.inOut); if (current !== revision) return;
+    await wait(250); if (current !== revision) return;
     mark(l3);
 
     addLog('Acceso concedido', true);
     welcome.textContent = `Bienvenido, ${name}`;
     tween(1150, 1700, ease.inOut);
-    await wait(1200);
+    await wait(1200); if (current !== revision) return;
     logout.hidden = false;
     busy = false;
   }
 
-  async function stopEngine() {
-    if (busy) return;
-    busy = true;
-    logout.hidden = true;
-    S.firing = false;
-    svg.classList.remove('running');
-    await tween(0, 2200, ease.out);
-    runView.hidden = true;
-    loginView.hidden = false;
-    userIn.value = ''; passIn.value = '';
-    busy = false;
-    userIn.focus();
+  const forgot = document.getElementById('forgot');
+  const recoveryView = document.getElementById('recoveryView');
+  const recoveryErr = document.getElementById('recoveryErr');
+  const savePass = document.getElementById('savePass');
+  const newPass = document.getElementById('newPass');
+  const confirmPass = document.getElementById('confirmPass');
+  const callbackParams = new URLSearchParams(location.hash.slice(1));
+  let recovering = callbackParams.get('type') === 'recovery';
+  let client, activeId = null, revision = 0, authRevision = 0;
+  function lock(value) { goBtn.disabled = value; forgot.disabled = value; }
+  function clearView() {
+    revision++; busy = false; S.tweenId++; S.rpm = 0;
+    S.firing = false; S.cranking = false; svg.classList.remove('running');
+    runView.hidden = true; recoveryView.hidden = true; loginView.hidden = false;
+    welcome.textContent = ''; logEl.replaceChildren(); passIn.value = '';
+    delete runView.dataset.userId;
+    activeId = null;
   }
-
-  function submit() {
-    if (busy) return;
-    const u = userIn.value.trim(), p = passIn.value;
-    if (u.toLowerCase() === AUTH.user && p === AUTH.pass) startEngine(u);
-    else failedAttempt();
+  async function reconcile() {
+    const request = ++authRevision;
+    try {
+      const { data, error } = await client.auth.getUser();
+      if (request !== authRevision) return;
+      if (error || !data.user) { clearView(); return; }
+      const user = data.user;
+      if (recovering) {
+        clearView(); loginView.hidden = true; recoveryView.hidden = false;
+        newPass.focus(); return;
+      }
+      if (activeId === user.id) return;
+      clearView(); activeId = user.id; runView.dataset.userId = user.id;
+      // El nombre es solo presentación. Nunca se usa para conceder permisos.
+      const name = user.user_metadata?.full_name || user.user_metadata?.name ||
+        user.email?.split('@')[0] || 'usuario';
+      await startEngine(String(name).slice(0, 100));
+    } catch {
+      if (request === authRevision) {
+        clearView(); errEl.textContent = 'No se pudo verificar la sesión. Intenta ingresar nuevamente.';
+      }
+    }
   }
-
+  async function submit() {
+    if (busy || !client || goBtn.disabled) return;
+    if (!userIn.value.trim() || !userIn.checkValidity() || !passIn.value) {
+      errEl.textContent = 'Ingresa tu correo y contraseña.'; return;
+    }
+    busy = true; lock(true); errEl.textContent = '';
+    try {
+      const { error } = await client.auth.signInWithPassword({
+        email: userIn.value.trim(), password: passIn.value
+      });
+      passIn.value = '';
+      if (error) { busy = false; await failedAttempt(); }
+      else { recovering = false; await reconcile(); }
+    } catch {
+      errEl.textContent = 'No se pudo conectar. Revisa tu conexión e intenta nuevamente.';
+    } finally { busy = false; lock(false); }
+  }
   goBtn.addEventListener('click', submit);
-  [userIn, passIn].forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); }));
+  [userIn, passIn].forEach(i => i.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submit(); }
+  }));
   [userIn, passIn].forEach(i => i.addEventListener('input', () => { errEl.textContent = ''; }));
-  logout.addEventListener('click', stopEngine);
+  forgot.addEventListener('click', async () => {
+    if (!client || busy) return;
+    if (!userIn.value.trim() || !userIn.checkValidity()) {
+      errEl.textContent = 'Escribe tu correo electrónico para recuperar el acceso.'; userIn.focus(); return;
+    }
+    lock(true);
+    try {
+      const { error } = await client.auth.resetPasswordForEmail(userIn.value.trim(), {
+        redirectTo: 'https://admin.oportunicars.cl/'
+      });
+      errEl.textContent = error ? 'No se pudo solicitar el correo. Intenta más tarde.' :
+        'Si el correo tiene una cuenta, recibirás un enlace para restablecer tu contraseña.';
+    } catch { errEl.textContent = 'No se pudo conectar. Intenta nuevamente.'; }
+    finally { lock(false); }
+  });
+  async function signOut() {
+    if (!client) return;
+    authRevision++; recovering = false; clearView();
+    try {
+      const { error } = await client.auth.signOut({ scope: 'local' });
+      if (error) errEl.textContent = 'No se pudo cerrar la sesión. Reintenta antes de dejar este dispositivo.';
+    } catch { errEl.textContent = 'No se pudo cerrar la sesión. Reintenta.'; }
+  }
+  logout.addEventListener('click', signOut);
+  document.getElementById('cancelRecovery').addEventListener('click', signOut);
+  savePass.addEventListener('click', async () => {
+    if (savePass.disabled || !recovering) return;
+    if (newPass.value.length < 12 || newPass.value !== confirmPass.value) {
+      recoveryErr.textContent = 'Usa al menos 12 caracteres y repite la misma contraseña.'; return;
+    }
+    savePass.disabled = true;
+    try {
+      const { error } = await client.auth.updateUser({ password: newPass.value });
+      if (error) { recoveryErr.textContent = 'No se pudo cambiar la contraseña. Revisa el enlace y la contraseña.'; return; }
+      newPass.value = ''; confirmPass.value = '';
+      await signOut();
+      errEl.textContent = 'Contraseña actualizada. Ingresa con tu nueva contraseña.';
+    } catch { recoveryErr.textContent = 'No se pudo conectar. Intenta nuevamente.'; }
+    finally { savePass.disabled = false; }
+  });
+  (async () => {
+    try {
+      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.102.0');
+      client = createClient('https://lxyqosqgvkgjybgffdob.supabase.co',
+        'sb_publishable_1J_TfuzcCqaqtDVDIaiLAw_uCufZXHC', {
+          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        });
+      client.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') recovering = true;
+        // Fuera del callback para evitar bloquear el cliente Auth.
+        setTimeout(() => { reconcile(); }, 0);
+      });
+      await client.auth.getSession();
+      if (callbackParams.has('access_token') || callbackParams.has('error')) {
+        history.replaceState(null, '', location.pathname);
+      }
+      if (callbackParams.has('error')) {
+        recovering = false; errEl.textContent = 'El enlace no es válido o expiró. Solicita uno nuevo.';
+      }
+      await reconcile();
+      goBtn.textContent = 'Ingresar'; lock(false);
+    } catch {
+      clearView(); goBtn.textContent = 'Acceso no disponible';
+      errEl.textContent = 'No se pudo conectar al servicio de acceso. Recarga la página para reintentar.';
+    }
+  })();
+
 })();
 </script>
 </body>
 </html>
+
