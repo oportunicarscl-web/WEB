@@ -41,7 +41,8 @@ function osImport_(p,actor){
  const normalized=p.rows.map((item,i)=>{
   if(!item||typeof item!=='object'||Array.isArray(item)||JSON.stringify(item).length>15000)throw Error('Fila inválida.');
   const x=osNormalizeBank_(item,profile),source=x.operacion_origen_id;
-  const id='MOV-'+osHash_(profile.cuenta_id+'|'+(source?'ID|'+source:'LOTE|'+p.batch+'|'+(Number(p.offset||0)+i))).slice(0,40);
+  const existingId=String(item._movimiento_id||'');
+  const id=existingId&&t.rows.some(r=>r.movimiento_id===existingId&&r.cuenta_id===profile.cuenta_id)?existingId:'MOV-'+osHash_(profile.cuenta_id+'|'+(source?'ID|'+source:'LOTE|'+p.batch+'|'+(Number(p.offset||0)+i))).slice(0,40);
   const fingerprint=osHash_(JSON.stringify([profile.cuenta_id,x.fecha_operacion,x.monto,x.direccion,x.referencia,x.descripcion]));
   return {id,x,source,fingerprint,item,i};
  });

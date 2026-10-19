@@ -14,6 +14,7 @@ function doPost(e) {
       // Revalidate permissions after acquiring the lock.
       const current=ocActor_(p.token);
       if(p.action==='saveSystem')return ocJson_({ok:true,data:osSave_(p,current)});
+      if(p.action==='saveCompanyStart'){if(!current.manage||!osDate_(p.date))throw Error('Fecha o permiso inválido.');PropertiesService.getScriptProperties().setProperty('OC_FECHA_CREACION',p.date);return ocJson_({ok:true});}
       if(p.action==='saveBalance')return ocJson_({ok:true,data:osAccountSave_(p,current)});
       if(p.action==='import')return ocJson_({ok:true,data:osImport_(p,current)});
       if(p.action==='syncClaxo'){if(!current.manage)throw Error('Acceso restringido.');return ocJson_({ok:true,data:osClaxo_()});}
