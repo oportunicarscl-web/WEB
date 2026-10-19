@@ -29,7 +29,7 @@ test('Contabilidad queda fuera del menú; las tablas se conservan y usuarios no 
  for(const name of ['CENTROS_COSTO','PRECIOS_HISTORICOS','PROSPECTOS','DOCUMENTOS_FINANCIEROS','PLAN_CUENTAS','ASIENTOS','ASIENTO_LINEAS','PERIODOS','MOVIMIENTOS_SOCIOS']) assert.equal(schema.tables.some(t=>t.name===name),false);
  const names=new Set(schema.tables.map(t=>t.name));
  for(const t of schema.tables)for(const f of t.fields)if(f.ref)assert.ok(names.has(f.ref),t.name+'.'+f.name);
- assert.equal(roles.administrador.areas.length,5);
+ assert.equal(roles.administrador.areas.length,6);
  assert.equal(canAccess('operativo','gestion'),false);
  assert.equal(canAccess('gerencial','gestion'),true);
  assert.equal(tablesFor('maestros',schema).some(t=>t.name==='USUARIOS'),false);

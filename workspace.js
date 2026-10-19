@@ -1,14 +1,15 @@
 (function (root) {
   'use strict';
   const areas = [
+    {id:'compromisos',name:'Compromisos no caja',hint:'Cobros y pagos pendientes',tables:['PROYECCIONES','PRESTAMOS']},
     {id:'finanzas',name:'Caja y bancos',hint:'Movimientos y clasificación',tables:['MOVIMIENTOS_BANCARIOS','CONCEPTOS_CAJA']},
     {id:'operaciones',name:'Autos y operación',hint:'Ingreso, preparación, venta y resultado',tables:['VEHICULOS','AUTOS_OPERACION','ACTIVIDADES_AUTOS']},
     {id:'gestion',name:'Finanzas y patrimonio',hint:'Costos fijos, proyecciones y stock propio',tables:['COSTOS_FIJOS','PROYECCIONES','PRESTAMOS','APORTES_CAPITAL_SOCIOS']},
-    {id:'analitica',name:'Reportes',hint:'Resultados consolidados',tables:[]},
+    {id:'analitica',name:'Gerencia',hint:'Resultados consolidados',tables:[]},
     {id:'parametros',name:'Configuración',hint:'Cuentas, usuarios y conceptos',tables:['USUARIOS','CUENTAS_FINANCIERAS','PERFILES_IMPORTACION']}
   ];
   const roles = {
-    operativo:{label:'Operaciones',home:'operacional',areas:['finanzas','operaciones']},
+    operativo:{label:'Operaciones',home:'operacional',areas:['finanzas','operaciones','analitica','compromisos']},
     gerencial:{label:'Gerencia',home:'gerencial',areas:areas.map(a=>a.id)},
     administrador:{label:'Administración',home:'gerencial',areas:areas.map(a=>a.id)},
     finanzas:{label:'Finanzas',home:'gerencial',areas:['finanzas','gestion','analitica','parametros']}
@@ -82,7 +83,7 @@
   }
   function nav(id,text){return `<button data-nav="${id}" class="oc-nav ${view===id?'active':''}" ${view===id?'aria-current="page"':''}>${text}<span>↗</span></button>`;}
   function pending(){if(session.connectionError)return '<section class="oc-empty"><h2>Conexión con Google pendiente</h2><p>'+esc(session.connectionError)+'</p><p>Tu sesión de acceso está verificada.</p></section>';return '<section class="oc-empty"><span class="oc-empty-icon">○</span><h2>Tu cuenta está verificada</h2><p>Falta que el administrador asigne tu perfil de trabajo. Una vez asignado, entra nuevamente para ver tu resumen y tus áreas.</p><p>No necesitas crear otra cuenta.</p></section>';}
-  function summary(){return root.OCSistema?root.OCSistema.markup(view==='gerencial'?'analitica':'operaciones'):pending();}
+  function summary(){return root.OCSistema?root.OCSistema.markup(view==='gerencial'?'analitica':'resumen'):pending();}
   function moduleView(){
     if(!canAccess(role,view))return pending();
     if(view==='finanzas'&&root.OCCaja)return root.OCCaja.markup();

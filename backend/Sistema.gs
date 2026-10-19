@@ -1,5 +1,6 @@
 // Oportunicars — Sistema de Gestión. Business data stays in Google.
 const OC_SYSTEM_TABLES={
+ VEHICULOS:{book:'OC_MAESTROS_ID',key:'vehiculo_id',fields:['vehiculo_id','patente','marca','modelo','anio']},
  AUTOS_OPERACION:{book:'OC_OPERACIONES_ID',key:'vehiculo_id',fields:['vehiculo_id','modalidad','fecha_ingreso','estado_auto','costo_compra','fecha_venta','precio_venta','comision_consignacion','notas']},
  ACTIVIDADES_AUTOS:{book:'OC_OPERACIONES_ID',key:'actividad_id',fields:['actividad_id','vehiculo_id','fecha','tipo','descripcion','dias','costo','estado']},
  COSTOS_FIJOS:{book:'OC_FINANZAS_ID',key:'costo_fijo_id',fields:['costo_fijo_id','nombre','concepto_id','monto_mensual','dia_pago','habilitado']},
@@ -17,8 +18,9 @@ function osClean_(r){const x={};Object.keys(r).forEach(k=>{if(k!=='_row')x[k]=r[
 function osRows_(name){return osTable_(name).rows.filter(ocProd_).map(osClean_);}
 function osFinance_(actor){return actor.manage||actor.role==='finanzas';}
 function osData_(actor){
- const financial=osFinance_(actor);
+ const financial=true;
  const d={inventory:ocTable_('OC_MAESTROS_ID','VEHICULOS').rows.filter(ocProd_).map(osClean_),operations:osRows_('AUTOS_OPERACION'),activities:osRows_('ACTIVIDADES_AUTOS'),movements:ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS').rows.filter(ocProd_).map(osClean_),accounts:ocTable_('OC_MAESTROS_ID','CUENTAS_FINANCIERAS').rows.filter(ocProd_).map(osClean_),fixed:financial?osRows_('COSTOS_FIJOS'):[],forecasts:financial?osRows_('PROYECCIONES'):[],loans:financial?osRows_('PRESTAMOS'):[]};
+ d.companyStart=PropertiesService.getScriptProperties().getProperty('OC_FECHA_CREACION')||'';
  const today=Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd');
  const result=OCSystemCore.reports(d,today);
  return {inventory:d.inventory,operations:d.operations,activities:d.activities,fixed:d.fixed,forecasts:d.forecasts,loans:d.loans,accounts:financial?d.accounts:[],canFinance:financial,report:financial?result:{today,cars:result.cars,unclassified:result.unclassified},links:{forecasts:osRows_('PROYECCIONES').map(f=>({proyeccion_id:f.proyeccion_id,fecha:f.fecha,direccion:f.direccion,descripcion:f.descripcion,vehiculo_id:f.vehiculo_id})),loans:osRows_('PRESTAMOS').map(l=>({prestamo_id:l.prestamo_id,nombre:l.nombre}))},sync:PropertiesService.getScriptProperties().getProperty('OC_CLAXO_LAST_SYNC')||null};
@@ -49,21 +51,22 @@ function osAudit_(actor,action,table,id,detail){
  ocPatchRow_(t,t.sheet.getLastRow()+1,{evento_id:Utilities.getUuid(),fecha:new Date().toISOString(),actor_id:actor.id,accion:action,tabla:table,registro_id:id,detalle:JSON.stringify(detail).slice(0,15000),ambiente:'PRODUCCION',estado_registro:'ACTIVO'});
 }
 function osSave_(p,actor){
- const table=p.table,allowed=['AUTOS_OPERACION','ACTIVIDADES_AUTOS','COSTOS_FIJOS','PROYECCIONES','PRESTAMOS'];
+ const table=p.table,allowed=['VEHICULOS','AUTOS_OPERACION','ACTIVIDADES_AUTOS','COSTOS_FIJOS','PROYECCIONES','PRESTAMOS'];
  if(allowed.indexOf(table)<0)throw Error('Registro no permitido.');
- if(['AUTOS_OPERACION','ACTIVIDADES_AUTOS'].indexOf(table)<0&&!osFinance_(actor))throw Error('Se requiere acceso financiero.');
+ if(['VEHICULOS','AUTOS_OPERACION','ACTIVIDADES_AUTOS','PROYECCIONES','PRESTAMOS'].indexOf(table)<0&&!osFinance_(actor))throw Error('Se requiere acceso financiero.');
  const def=OC_SYSTEM_TABLES[table],input=p.record||{},patch={};
  def.fields.forEach(k=>{const v=input[k]===undefined?'':input[k];if(!['string','number'].includes(typeof v)||String(v).length>2000)throw Error('Valor inválido: '+k);patch[k]=typeof v==='string'?v.trim():v;});
  const id=patch[def.key]||p.requestId;if(typeof id!=='string'||!/^[\w-]{1,100}$/.test(id))throw Error('Identificador inválido.');patch[def.key]=id;
  ['fecha','fecha_ingreso','fecha_venta','fecha_saldo','fecha_vencimiento'].forEach(k=>{if(patch[k]&&!osDate_(patch[k]))throw Error('Fecha inválida: '+k);});
  ['costo_compra','precio_venta','comision_consignacion','costo','dias','monto_mensual','monto','saldo_inicial','dia_pago'].forEach(k=>{if(patch[k]!==undefined&&patch[k]!==''){const v=Number(patch[k]);if(!Number.isSafeInteger(v)||v<0)throw Error('Importe o cantidad inválida: '+k);patch[k]=v;}});
- const enums={modalidad:['PROPIO','CONSIGNADO'],estado_auto:['PREPARACION','DISPONIBLE','RESERVADO','VENDIDO','RETIRADO'],tipo:table==='ACTIVIDADES_AUTOS'?['ESTACIONAMIENTO','ARREGLO','LIMPIEZA','FOTOS','OTRO']:['CUOTA_VENTA','INGRESO_ESPERADO','DEUDA','CONSIGNACION','GASTO_PREVISTO'],direccion:['ENTRADA','SALIDA'],sentido:['RECIBIDO','OTORGADO'],habilitado:['SI','NO'],estado:['PENDIENTE','EN_CURSO','HECHO']};
+ const enums={modalidad:['PROPIO','CONSIGNADO'],estado_auto:['PREPARACION','DISPONIBLE','RESERVADO','VENDIDO','RETIRADO'],tipo:table==='ACTIVIDADES_AUTOS'?['ESTACIONAMIENTO','ARREGLO','LIMPIEZA','FOTOS','OTRO']:['CUOTA_VENTA','INGRESO_ESPERADO','DEUDA','CONSIGNACION','GASTO_PREVISTO','SERVICIO_30_DIAS'],direccion:['ENTRADA','SALIDA'],sentido:['RECIBIDO','OTORGADO'],habilitado:['SI','NO'],estado:['PENDIENTE','EN_CURSO','HECHO']};
  Object.keys(enums).forEach(k=>{if(patch[k]!==undefined&&patch[k]!==''&&enums[k].indexOf(patch[k])<0)throw Error('Opción inválida: '+k);});
- const required={AUTOS_OPERACION:['modalidad','fecha_ingreso','estado_auto'],ACTIVIDADES_AUTOS:['vehiculo_id','fecha','tipo','estado'],COSTOS_FIJOS:['nombre','monto_mensual','dia_pago','habilitado'],PROYECCIONES:['fecha','direccion','tipo','descripcion','monto'],PRESTAMOS:['nombre','sentido','saldo_inicial','fecha_saldo']}[table];
+ const required={VEHICULOS:['patente','marca','modelo'],AUTOS_OPERACION:['modalidad','fecha_ingreso','estado_auto'],ACTIVIDADES_AUTOS:['vehiculo_id','fecha','tipo','estado'],COSTOS_FIJOS:['nombre','monto_mensual','dia_pago','habilitado'],PROYECCIONES:['fecha','direccion','tipo','descripcion','monto'],PRESTAMOS:['nombre','sentido','saldo_inicial','fecha_saldo']}[table];
  required.forEach(k=>{if(patch[k]==='')throw Error('Completa '+k);});
  if(patch.dia_pago!==undefined&&(patch.dia_pago<1||patch.dia_pago>28))throw Error('Día de pago entre 1 y 28.');
- if(patch.vehiculo_id&&ocInventory_().filter(v=>v.id===patch.vehiculo_id).length!==1)throw Error('Auto no encontrado.');
+ if(table!=='VEHICULOS'&&patch.vehiculo_id&&ocInventory_().filter(v=>v.id===patch.vehiculo_id).length!==1)throw Error('Auto no encontrado.');
  if(table==='AUTOS_OPERACION'&&patch.estado_auto==='VENDIDO'&&(!patch.fecha_venta||patch.precio_venta===''))throw Error('Completa fecha y precio de venta.');
+ if(table==='VEHICULOS'&&ocInventory_().some(v=>v.id!==id&&v.patente.replace(/[^A-Z0-9]/gi,'').toUpperCase()===patch.patente.replace(/[^A-Z0-9]/gi,'').toUpperCase()))throw Error('La patente ya existe. Edita su ficha.');
  if(patch.fecha_venta&&patch.fecha_ingreso&&patch.fecha_venta<patch.fecha_ingreso)throw Error('La venta no puede preceder al ingreso.');
  if(table==='PROYECCIONES'&&patch.tipo==='CUOTA_VENTA'&&(patch.direccion!=='ENTRADA'||!patch.vehiculo_id))throw Error('Una cuota de venta requiere auto y entrada.');
  const t=osTable_(table),matches=t.rows.filter(r=>r[def.key]===id);
