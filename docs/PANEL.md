@@ -1,6 +1,6 @@
 # Panel posterior al acceso
 
-Actualización de flujo de caja: consultar [FLUJO_CAJA.md](FLUJO_CAJA.md). Finanzas ya permite preparar archivos Excel/CSV localmente. La integración privada con Google sigue pendiente. Los roles en app_metadata descritos abajo corresponden a la primera implementación; el diseño acordado requiere USUARIOS en Google como autoridad de permisos, con Supabase solo para login.
+Actualización: [La Caja](LA_CAJA.md) reemplaza el flujo manual de archivos. El operario asigna conceptos y autos del inventario. Mis conceptos permite crear las reglas. Contabilidad ya no aparece en el menú. Ingestión automática y persistencia Google pendientes. Los roles vía app_metadata descritos abajo son la implementación inicial, pendiente de sustituir por USUARIOS en Google.
 
 El login y la recuperación existentes siguen usando Supabase. Tras el acceso, el panel resuelve el rol y abre el resumen correspondiente. No incluye movimientos reales ni credenciales privadas. En el acceso real no muestra indicadores ficticios; la vista previa muestra ejemplos explícitamente señalados. Las 59 tablas se distribuyen en ocho áreas y permiten consultar campos y catálogos.
 

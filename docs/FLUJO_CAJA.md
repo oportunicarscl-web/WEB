@@ -1,3 +1,5 @@
+> Referencia de la importación inicial. La interfaz de carga manual descrita aquí fue reemplazada por [La Caja](LA_CAJA.md); ya no se presenta al operario. Se conservan las reglas de integridad de los datos.
+
 # Flujo de caja por cuenta
 
 ## Modelo operativo

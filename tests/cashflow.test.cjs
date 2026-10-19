@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const c=require('../cashflow.js');
+const c=require('../cash-import.js');
 const map={date:0,amount:1,reference:2,id:3,credit:'',debit:''};
 const a='CTA-MERCADO-PAGO';
 test('Cinco cuentas independientes; pesos enteros y fechas reales',()=>{

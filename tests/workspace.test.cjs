@@ -12,19 +12,22 @@ test('El nombre visible y el correo no conceden permisos',()=>{
 });
 test('Separación entre operación, gerencia y administración',()=>{
  assert.equal(roles.operativo.home,'operacional');assert.equal(roles.gerencial.home,'gerencial');
- assert.equal(canAccess('operativo','finanzas'),false);
+ assert.equal(canAccess('operativo','finanzas'),true);
+ assert.equal(canAccess('administrador','contabilidad'),false);
  assert.equal(canAccess('operativo','parametros'),false);
  assert.equal(canAccess('gerencial','finanzas'),true);
  assert.equal(canAccess('gerencial','parametros'),false);
  assert.equal(canAccess('administrador','parametros'),true);
  assert.equal(canAccess(null,'maestros'),false);
 });
-test('Cada una de las 59 tablas tiene un módulo; usuarios no se filtran por maestros',()=>{
+test('Contabilidad queda fuera del menú; las tablas se conservan y usuarios no se filtran',()=>{
  const vm=require('node:vm'),fs=require('node:fs');const context={window:{}};
  vm.runInNewContext(fs.readFileSync(require.resolve('../schema.js'),'utf8'),context);
  const schema=context.window.OCSchema;
  const covered=new Set(roles.administrador.areas.flatMap(a=>tablesFor(a,schema).map(t=>t.name)));
- assert.equal(schema.tables.length,59);assert.equal(covered.size,59);
+ assert.equal(schema.tables.length,59);
+ const visible=schema.tables.filter(t=>t.book!=='OC_04_CONTABILIDAD');
+ assert.equal(covered.size,visible.length);
  assert.equal(tablesFor('maestros',schema).some(t=>t.name==='USUARIOS'),false);
  assert.equal(tablesFor('inexistente',schema).length,0);
 });

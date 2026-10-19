@@ -3,19 +3,18 @@
   const areas = [
     {id:'comercial',name:'Comercial',hint:'Prospectos, reservas y ventas',tables:['PROSPECTOS','RESERVAS','VENTAS','VENTA_DETALLES','PRECIOS_HISTORICOS']},
     {id:'operaciones',name:'Operaciones',hint:'Ingresos, preparación y entregas',tables:['INGRESOS_VEHICULOS','COMPRAS','CONSIGNACIONES','COSTOS_VEHICULOS','ENTREGAS','GARANTIAS','TAREAS']},
-    {id:'finanzas',name:'Finanzas',hint:'Cobros, pagos y conciliación',book:'OC_03_FINANZAS'},
-    {id:'contabilidad',name:'Contabilidad',hint:'Cuentas, asientos y cierres',book:'OC_04_CONTABILIDAD'},
+    {id:'finanzas',name:'La Caja',hint:'Movimientos y conceptos',book:'OC_03_FINANZAS'},
     {id:'maestros',name:'Datos maestros',hint:'Vehículos, personas y empresas',book:'OC_01_MAESTROS',exclude:['USUARIOS','PARAMETROS']},
     {id:'control',name:'Control',hint:'Auditoría e importaciones',book:'OC_05_CONTROL'},
     {id:'analitica',name:'Informes',hint:'Resultados y seguimiento',book:'OC_06_ANALITICA'},
     {id:'parametros',name:'Parámetros',hint:'Catálogos, usuarios y configuración',tables:['USUARIOS','PARAMETROS']}
   ];
   const roles = {
-    operativo:{label:'Operaciones',home:'operacional',areas:['comercial','operaciones','maestros']},
-    gerencial:{label:'Gerencia',home:'gerencial',areas:['comercial','operaciones','finanzas','contabilidad','maestros','control','analitica']},
+    operativo:{label:'Operaciones',home:'operacional',areas:['finanzas','comercial','operaciones','maestros']},
+    gerencial:{label:'Gerencia',home:'gerencial',areas:['comercial','operaciones','finanzas','maestros','control','analitica']},
     administrador:{label:'Administración',home:'gerencial',areas:areas.map(a=>a.id)},
     finanzas:{label:'Finanzas',home:'operacional',areas:['finanzas','maestros']},
-    contabilidad:{label:'Contabilidad',home:'operacional',areas:['contabilidad','finanzas']},
+    contabilidad:{label:'Contabilidad',home:'operacional',areas:['finanzas']},
     comercial:{label:'Comercial',home:'operacional',areas:['comercial','maestros']}
   };
   const assignments = Object.freeze({jt:'operativo',mmusa:'operativo',alex:'gerencial',gonzalo:'gerencial'});
@@ -39,13 +38,14 @@
   let host,session=null,role=null,view='',table='',query='',preview=false;
   function node(html) { const t=document.createElement('template');t.innerHTML=html;return t.content; }
   function close() {
-    root.OCCashflow?.reset();
+    root.OCCaja?.reset();
     host?.remove();host=null;session=null;role=null;query='';table='';
     document.body.classList.remove('workspace-open');
     document.title='Oportunicars · Acceso';
   }
   function open(options) {
     close(); session=options; preview=options.preview===true;
+    root.OCCaja?.setup({preview,userId:options.user?.id,...options.caja});
     role=resolveRole(options.user);view=role?roles[role].home:'pendiente';
     host=document.createElement('div');host.id='oc-workspace';
     document.body.append(host);document.body.classList.add('workspace-open');
@@ -78,7 +78,7 @@
     const search=host.querySelector('#oc-search');
     if(search)search.oninput=()=>{query=search.value;renderTables();};
     host.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>showFields(b.dataset.detail));
-    root.OCCashflow?.mount(host);
+    root.OCCaja?.mount(host);
 
   }
   function nav(id,text){return `<button data-nav="${id}" class="oc-nav ${view===id?'active':''}" ${view===id?'aria-current="page"':''}>${text}<span>↗</span></button>`;}
@@ -136,7 +136,7 @@
   }
   function moduleView(){
     if(!canAccess(role,view))return pending();
-    if(view==='finanzas'&&!table&&root.OCCashflow)return root.OCCashflow.markup()+`<h2>Registros financieros</h2><div id="oc-tables">${tableCards(tablesFor(view,root.OCSchema))}</div>`;
+    if(view==='finanzas'&&root.OCCaja)return root.OCCaja.markup();
     const ts=tablesFor(view,root.OCSchema);
     const selected=ts.find(t=>t.name===table);
     if(selected)return `<button data-nav="${view}" class="oc-back">← Volver a ${areas.find(a=>a.id===view).name}</button><section class="oc-card"><div class="oc-section-heading"><div><p class="oc-eyebrow">${esc(selected.book)}</p><h2>${label(selected.name)}</h2></div><button data-detail="${selected.name}">Ver campos y reglas</button></div><p>${esc(selected.grain)}</p><div class="oc-table-scroll"><table><thead><tr>${selected.fields.slice(0,7).map(f=>`<th>${label(f.name)}</th>`).join('')}</tr></thead><tbody><tr><td colspan="7"><div class="oc-empty"><h3>Esta tabla aún no está conectada</h3><p>La estructura está preparada. La consulta y el registro se habilitarán al conectar una fuente con permisos de servidor.</p></div></td></tr></tbody></table></div></section>`;
