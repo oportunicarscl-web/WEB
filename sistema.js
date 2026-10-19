@@ -30,7 +30,7 @@ function markup(v){view=v;if(!options.connected)return '<section class="oc-card"
   if(v==='analitica')content+='<section class="oc-card"><h2>Flujo del mes</h2><p>Entradas: '+money(r.entries)+' · Salidas: '+money(r.exits)+' · Autos vendidos: '+esc(r.salesMonth)+' · Movimientos por clasificar: '+esc(r.unclassified)+'</p><p>Las transferencias internas se excluyen del flujo consolidado. Las entradas de capital y préstamos no se presentan como utilidad.</p></section>';
  }
  if(v==='parametros')content='<section class="oc-card"><h2>Configuración del sistema</h2><p>Los usuarios y permisos se administran en la hoja USUARIOS de Google. Supabase se utiliza únicamente para iniciar sesión.</p><h3>Inicio de la historia</h3><input id="os-start" type="date" value="'+esc(state.report?.dashboard?.start||'2025-10-01')+'"><button id="os-start-save">Guardar fecha de inicio</button><h3>Saldos de apertura por cuenta</h3><p>Saldo al cierre del día indicado. El sistema suma movimientos posteriores; no vuelve a sumar ese día.</p>'+table(['Cuenta','Saldo inicial','Fecha de corte',''],(state.accounts||[]).map(a=>[esc(a.nombre),a.saldo_inicial===''?'Por completar':money(Number(a.saldo_inicial)),esc(a.fecha_saldo_inicial),'<button data-balance="'+esc(a.cuenta_id)+'">Editar saldo</button>']))+'</section>';
- if(v==='analitica')content=management(r,cars);
+ if(v==='analitica')content=management(r,cars)+(root.OCCaja?.expenseMarkup()||'');
  if(v==='resumen')content=operational(r,cars);
  return '<div id="os-panel"><p role="status" id="os-message">'+esc(message)+'</p>'+content+'</div>';
 }

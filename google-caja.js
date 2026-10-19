@@ -16,7 +16,7 @@
   }
   const data=await call('bootstrap');if(data.profile.id!==user.id)throw Error('La identidad de la sesión no coincide.');
   const systemData=await call('system');
-  return {profile:data.profile,system:{connected:true,data:systemData,call,refresh:()=>call('system')},caja:{connected:true,canManageConcepts:data.profile.manage,concepts:data.concepts,inventory:data.inventory,movements:data.movements,activities:systemData.activities,forecasts:systemData.links.forecasts,loans:systemData.links.loans,
+  return {profile:data.profile,system:{connected:true,data:systemData,call,refresh:async()=>{const fresh=await call('bootstrap');root.OCCaja?.replaceData(fresh);return call('system');}},caja:{connected:true,canManageConcepts:data.profile.manage,concepts:data.concepts,inventory:data.inventory,movements:data.movements,activities:systemData.activities,forecasts:systemData.links.forecasts,loans:systemData.links.loans,
    async saveConcept(concept){return call('concept',{concept});},
    async saveMovement(m){const saved=await call('classify',{id:m.id,expectedVersion:m.version,conceptId:m.classification.id,conceptVersion:m.classification.version,vehicleId:m.classification.vehicleId,activityId:m.activityId||'',forecastId:m.forecastId||'',prestamoId:m.prestamoId||'',loanComponent:m.loanComponent||'',socio:m.socio||''});Object.assign(m,saved);return saved;}
   }};
