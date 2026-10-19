@@ -3,6 +3,11 @@ const a=require('node:assert/strict');
 const c=require('../caja.js');
 const inventory=[{id:'auto1',name:'Auto 1'},{id:'auto2',name:'Auto 2'}];
 const movement={id:'mov1',direction:'SALIDA',amount:1200000,confirmed:true};
+test('El inventario muestra ID, patente y modelo sin pedir otra relación',()=>{
+ a.equal(c.inventoryLabel({id:'AUTO-42',patente:'ABCD12',modelo:'Toyota Yaris'}),'AUTO-42 · ABCD12 · Toyota Yaris');
+ const linked=c.classify(movement,c.defaults.find(x=>x.id==='COMPRA'),'auto1',inventory);
+ const pending=c.assignVehicle(linked,'',inventory);a.equal(pending.id,linked.id);a.equal(pending.status,'POR_ASIGNAR_AUTO');
+});
 test('Un concepto aplica todas las clasificaciones y conserva el importe',()=>{
  const r=c.classify(movement,c.defaults.find(x=>x.id==='cyc'),null,inventory);
  a.equal(r.classification.category,'Marketing');a.equal(r.classification.nature,'GASTO');a.equal(r.classification.cost,'FIJO');a.equal(r.amount,1200000);a.equal(r.id,'mov1');

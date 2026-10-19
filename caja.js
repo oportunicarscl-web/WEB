@@ -20,15 +20,16 @@ function classify(m,c,vehicleId,inventory){
  return {...m,classification:{...c,vehicleId:c.vehicleOperation?(vehicleId||null):null},status:c.vehicleOperation&&!vehicleId?'POR_ASIGNAR_AUTO':'CLASIFICADO'};
 }
 function assignVehicle(m,id,inventory){
- if(!m.classification?.vehicleOperation||!inventory.some(v=>v.id===id))throw Error('Selecciona un auto del inventario.');
- return {...m,classification:{...m.classification,vehicleId:id},status:'CLASIFICADO'};
+ if(!m.classification?.vehicleOperation||id&&!inventory.some(v=>v.id===id))throw Error('Selecciona un auto del inventario.');
+ return {...m,classification:{...m.classification,vehicleId:id||null},status:id?'CLASIFICADO':'POR_ASIGNAR_AUTO'};
 }
+function inventoryLabel(v){return [v.id,v.patente||v.plate||'Sin patente',v.modelo||v.model||v.name||'Sin modelo'].join(' · ');}
 function vehicleTotals(movements,id){
  const result={purchase:0,repairs:0,sales:0,unconfirmed:0};
  for(const m of movements){const c=m.classification;if(!c||c.vehicleId!==id)continue;if(m.confirmed!==true||!Number.isSafeInteger(m.amount)||m.amount<0){result.unconfirmed++;continue;}const key={COMPRA:'purchase',ARREGLO:'repairs',VENTA:'sales'}[c.vehicleOperation];if(key)result[key]+=m.amount;}
  return {...result,result:result.sales-result.purchase-result.repairs};
 }
-const api={accounts,defaults,validate,classify,assignVehicle,vehicleTotals};
+const api={accounts,defaults,validate,classify,assignVehicle,vehicleTotals,inventoryLabel};
 if(typeof module!=='undefined')module.exports=api;
 if(!root.document)return;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -38,18 +39,22 @@ function reset(){s=null;config=null;document.querySelectorAll('[data-caja-dialog
 function setup(options={}){
  config=options;key='oc-conceptos-v1-'+(options.preview?'preview':options.userId||'local');
  let concepts=defaults.map(c=>({...c}));try{const data=JSON.parse(localStorage.getItem(key));if(Array.isArray(data)&&data.length)concepts=data.map(c=>validate(c,data));}catch{}
- s={concepts:options.concepts||concepts,inventory:options.inventory||(options.preview?[{id:'demo-auto',name:'Auto de ejemplo · Inventario'}]:[]),movements:options.movements||(options.preview?[
+ s={concepts:options.concepts||concepts,inventory:options.inventory||(options.preview?[{id:'DEMO-AUTO-001',patente:'DEMO01',modelo:'Modelo de ejemplo'}]:[]),movements:options.movements||(options.preview?[
  {id:'demo-1',account:'SECURITY EMPRESA',description:'Claxo',amount:90,direction:'SALIDA',confirmed:true,status:'PENDIENTE'},
  {id:'demo-2',account:'BANCO CHILE',description:'Cars and Coffee',amount:1200000,direction:'SALIDA',confirmed:true,status:'PENDIENTE'},
- {id:'demo-3',account:'MERCADO PAGO',description:'Taller · reparación vehículo',amount:250000,direction:'SALIDA',confirmed:true,status:'PENDIENTE'}]:[]),tab:'movimientos',filter:'PENDIENTE',account:'',message:'',busy:false};
+ {id:'demo-3',account:'MERCADO PAGO',description:'Taller · reparación vehículo',amount:250000,direction:'SALIDA',confirmed:true,status:'PENDIENTE'}]:[]),vehicleChoices:{},tab:'movimientos',filter:'PENDIENTE',account:'',message:'',busy:false};
 }
 function markup(){return '<section id="oc-caja" class="oc-card"></section>';}
 function mount(parent){const el=parent.querySelector('#oc-caja');if(el&&s)draw(el);}
 function tags(c){return [c.category,c.nature,c.cost==='NO_APLICA'?'':('Costo '+c.cost.toLowerCase()),c.recurring?'Recurrente':''].filter(Boolean).map(t=>`<span class="oc-caja-tag">${esc(t)}</span>`).join('');}
 function conceptOptions(m){return s.concepts.filter(c=>m.direction==='ENTRADA'?['INGRESO','TRANSFERENCIA'].includes(c.nature):m.direction==='SALIDA'?c.nature!=='INGRESO':true);}
+function vehicleControl(m){
+ const selected=m.classification?.vehicleId||s.vehicleChoices[m.id]||'';
+ return `<label>Inventario · ID / patente / modelo<select data-vehicle="${esc(m.id)}"><option value="">Por asignar auto</option>${s.inventory.map(v=>`<option value="${esc(v.id)}" ${v.id===selected?'selected':''}>${esc(inventoryLabel(v))}</option>`).join('')}</select></label>`;
+}
 function row(m){
  const c=m.classification,list=conceptOptions(m),suggestion=list.find(c=>c.id==='claxo'&&/claxo/i.test(m.description)||c.id==='cyc'&&/cars.*coff|\bcyc\b/i.test(m.description));
- return `<article class="oc-caja-row"><div><small>${esc(m.account)}</small><h3>${esc(m.description)}</h3><strong>${m.direction==='SALIDA'?'−':m.direction==='ENTRADA'?'+':''}${money(m.amount)}</strong></div><div>${c?`<h3>${esc(c.name)}</h3><p>${tags(c)}</p>${c.vehicleOperation?`<p>${esc(s.inventory.find(v=>v.id===c.vehicleId)?.name||'Por asignar auto')}</p><label>Asignar / cambiar auto<select data-vehicle="${esc(m.id)}"><option value="">Seleccionar inventario…</option>${s.inventory.map(v=>`<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('')}</select></label>`:''}<button data-change="${esc(m.id)}">Cambiar concepto</button>`:`${suggestion?`<button data-quick="${esc(suggestion.id)}" data-movement="${esc(m.id)}">${esc(suggestion.name)} ✓</button><p>${tags(suggestion)}</p>`:''}<label>Asignar concepto<select data-concept="${esc(m.id)}"><option value="">Seleccionar…</option>${list.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label>`}</div></article>`;
+ return `<article class="oc-caja-row"><div><small>${esc(m.account)}</small><h3>${esc(m.description)}</h3><strong>${m.direction==='SALIDA'?'−':m.direction==='ENTRADA'?'+':''}${money(m.amount)}</strong></div><div>${c?`<h3>${esc(c.name)}</h3><p>${tags(c)}</p>${c.vehicleOperation?vehicleControl(m):''}<button data-change="${esc(m.id)}">Cambiar concepto</button>`:`${suggestion?`<button data-quick="${esc(suggestion.id)}" data-movement="${esc(m.id)}">${esc(suggestion.name)} ✓</button><p>${tags(suggestion)}</p>`:''}<label>Asignar concepto<select data-concept="${esc(m.id)}"><option value="">Seleccionar…</option>${list.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label>${vehicleControl(m)}`}</div></article>`;
 }
 function draw(el){
  const rows=s.movements.filter(m=>(!s.account||s.account===m.account)&&(!s.filter||s.filter===m.status));
@@ -59,7 +64,7 @@ function draw(el){
  for(const [id,k] of [['caja-account','account'],['caja-filter','filter']]){const input=el.querySelector('#'+id);if(input)input.onchange=()=>{s[k]=input.value;draw(el);};}
  el.querySelectorAll('[data-quick]').forEach(b=>b.onclick=()=>choose(el,b.dataset.movement,b.dataset.quick));
  el.querySelectorAll('[data-concept]').forEach(b=>b.onchange=()=>{if(b.value)choose(el,b.dataset.concept,b.value);});
- el.querySelectorAll('[data-vehicle]').forEach(b=>b.onchange=async()=>{if(b.value)try{await save(el,assignVehicle(s.movements.find(m=>m.id===b.dataset.vehicle),b.value,s.inventory));}catch(e){s.message=e.message;draw(el);}});
+ el.querySelectorAll('[data-vehicle]').forEach(b=>b.onchange=async()=>{const m=s.movements.find(m=>m.id===b.dataset.vehicle);if(!m.classification?.vehicleOperation){s.vehicleChoices[m.id]=b.value;return;}try{await save(el,assignVehicle(m,b.value,s.inventory));}catch(e){s.message=e.message;draw(el);}});
  el.querySelectorAll('[data-change]').forEach(b=>b.onclick=()=>{const m=s.movements.find(m=>m.id===b.dataset.change),d=dialog(`<h2>Cambiar concepto</h2><select>${conceptOptions(m).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select><button id="apply">Aplicar</button><button id="cancel">Cancelar</button>`);d.querySelector('#apply').onclick=()=>{const id=d.querySelector('select').value;d.close();choose(el,m.id,id);};});
  if(s.busy)el.querySelectorAll('button,select').forEach(b=>b.disabled=true);
 }
@@ -71,17 +76,16 @@ async function save(el,m){
 }
 async function choose(el,id,conceptId){
  const m=s.movements.find(m=>m.id===id),c=s.concepts.find(c=>c.id===conceptId);
- try{if(!c.vehicleOperation){await save(el,classify(m,c,null,s.inventory));return;}
- const d=dialog(`<h2>${esc(c.name)}</h2><p>Selecciona el auto o déjalo por asignar.</p><select><option value="">Por asignar auto</option>${s.inventory.map(v=>`<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('')}</select><p><button id="apply">Asignar</button> <button id="cancel">Cancelar</button></p><p role="status"></p>`);
- d.querySelector('#apply').onclick=async()=>{try{await save(el,classify(m,c,d.querySelector('select').value,s.inventory));d.close();}catch(e){d.querySelector('[role=status]').textContent=e.message;}};
- }catch(e){if(s){s.message=e.message;draw(el);}}
+ try{const next=classify(m,c,s.vehicleChoices[id]||m.classification?.vehicleId||null,s.inventory);await save(el,next);if(s&&next.status==='POR_ASIGNAR_AUTO'){s.filter='POR_ASIGNAR_AUTO';draw(el);}}
+ catch(e){if(s){s.message=e.message;draw(el);}}
 }
+
 function edit(el,original){
  const c=original||{name:'',category:'',nature:'GASTO',cost:'FIJO',recurring:false,vehicleOperation:''};
  const select=(name,values)=>`<select name="${name}">${values.map(([v,l])=>`<option value="${v}" ${c[name]===v?'selected':''}>${l}</option>`).join('')}</select>`;
- const d=dialog(`<form><h2>${original?'Editar':'Crear'} concepto</h2><div class="oc-caja-form"><label>Nombre<input name="name" required maxlength="100" value="${esc(c.name)}" placeholder="Pago CYC"></label><label>Categoría<input name="category" required maxlength="80" value="${esc(c.category)}" placeholder="Marketing, RP…"></label><label>Qué es${select('nature',[['GASTO','Gasto'],['COSTO','Costo'],['INGRESO','Ingreso'],['TRANSFERENCIA','Transferencia interna']])}</label><label>Tipo de costo${select('cost',[['FIJO','Fijo'],['VARIABLE','Variable'],['NO_APLICA','No aplica']])}</label><label>Relación con un auto${select('vehicleOperation',[['','No corresponde'],['COMPRA','Compra'],['ARREGLO','Arreglo'],['VENTA','Venta']])}</label><label><input type="checkbox" name="recurring" ${c.recurring?'checked':''}> Pago recurrente</label></div><p>Al asignar este concepto se aplican todas estas clasificaciones.</p><p role="status"></p><button type="submit">Guardar concepto</button> <button type="button" id="cancel">Cancelar</button></form>`);
+ const d=dialog(`<form><h2>${original?'Editar':'Crear'} concepto</h2><div class="oc-caja-form"><label>Nombre<input name="name" required maxlength="100" value="${esc(c.name)}" placeholder="Pago CYC"></label><label>Categoría<input name="category" required maxlength="80" value="${esc(c.category)}" placeholder="Marketing, RP…"></label><label>Qué es${select('nature',[['GASTO','Gasto'],['COSTO','Costo'],['INGRESO','Ingreso'],['TRANSFERENCIA','Transferencia interna']])}</label><label>Tipo de costo${select('cost',[['FIJO','Fijo'],['VARIABLE','Variable'],['NO_APLICA','No aplica']])}</label><label><input type="checkbox" name="recurring" ${c.recurring?'checked':''}> Pago recurrente</label></div><p>Al asignar este concepto se aplican todas estas clasificaciones.</p><p role="status"></p><button type="submit">Guardar concepto</button> <button type="button" id="cancel">Cancelar</button></form>`);
  d.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),button=e.target.querySelector('[type=submit]');button.disabled=true;try{
- const next=validate({id:original?.id||crypto.randomUUID(),name:f.get('name'),category:f.get('category'),nature:f.get('nature'),cost:f.get('cost'),vehicleOperation:f.get('vehicleOperation'),recurring:f.has('recurring'),version:(original?.version||0)+1},s.concepts);
+ const next=validate({id:original?.id||crypto.randomUUID(),name:f.get('name'),category:f.get('category'),nature:f.get('nature'),cost:f.get('cost'),vehicleOperation:original?.vehicleOperation||'',recurring:f.has('recurring'),version:(original?.version||0)+1},s.concepts);
  const concepts=original?s.concepts.map(c=>c.id===next.id?next:c):[...s.concepts,next];
  if(config.saveConcept)await config.saveConcept(next);else localStorage.setItem(key,JSON.stringify(concepts));s.concepts=concepts;s.message=config.saveConcept?'Concepto guardado.':'Concepto guardado como borrador en este navegador.';d.close();draw(el);
  }catch(e){d.querySelector('[role=status]').textContent=e.message;button.disabled=false;}};
