@@ -309,7 +309,7 @@
 <div class="titleblock">Plano 01 · Motor rotativo · Esc. 1:1</div>
 
 <script src="schema.js"></script>
-<script src="caja.js"></script><script src="workspace.js"></script>
+<script src="caja.js"></script><script src="google-config.js"></script><script src="google-caja.js"></script><script src="sistema.js"></script><script src="workspace.js"></script>
 <script>
 (() => {
   // La identidad se verifica con Supabase; no hay claves de usuarios en el frontend.
@@ -616,7 +616,11 @@
       const workspaceRevision = revision;
       await startEngine(String(name).slice(0, 100));
       if (activeId === user.id && workspaceRevision === revision && !recovering) {
-        window.OCWorkspace.open({ user, signOut });
+        let connected;
+        try { connected = await window.OCGoogleCaja.connect(client,user); }
+        catch(error) { connected = {connectionError:error.message}; }
+        if(activeId===user.id&&workspaceRevision===revision&&!recovering)
+          window.OCWorkspace.open({ user, signOut, ...connected });
       }
     } catch {
       if (request === authRevision) {

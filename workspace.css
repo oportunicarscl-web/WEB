@@ -125,3 +125,7 @@ body.workspace-open{
 @media(max-width:650px){.oc-caja-row,.oc-caja-form{grid-template-columns:1fr}}
 .oc-dialog[data-caja-dialog]{font-family:'IBM Plex Mono',monospace;color:#3b2f21}
 .oc-dialog[data-caja-dialog] h2{font-family:Caveat,cursive;font-size:32px}
+
+.oc-system-actions{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}.oc-dialog label{display:flex;flex-direction:column;gap:6px;margin:10px 0}.oc-dialog input,.oc-dialog select{padding:10px;border:1px solid #b4935f;background:#faf8f3;color:#403629;font:inherit}.oc-dialog button,.oc-system-actions button{padding:10px 14px;cursor:pointer}
+
+.oc-dialog{font-family:'IBM Plex Mono',monospace}.oc-dialog h2{font-family:'Caveat',cursive;font-size:30px}.oc-dialog select,.oc-dialog button{font:inherit}

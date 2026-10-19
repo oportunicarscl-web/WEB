@@ -16,7 +16,7 @@ test('Separación entre operación, gerencia y administración',()=>{
  assert.equal(canAccess('administrador','contabilidad'),false);
  assert.equal(canAccess('operativo','parametros'),false);
  assert.equal(canAccess('gerencial','finanzas'),true);
- assert.equal(canAccess('gerencial','parametros'),false);
+ assert.equal(canAccess('gerencial','parametros'),true);
  assert.equal(canAccess('administrador','parametros'),true);
  assert.equal(canAccess(null,'maestros'),false);
 });
@@ -25,9 +25,13 @@ test('Contabilidad queda fuera del menú; las tablas se conservan y usuarios no 
  vm.runInNewContext(fs.readFileSync(require.resolve('../schema.js'),'utf8'),context);
  const schema=context.window.OCSchema;
  const covered=new Set(roles.administrador.areas.flatMap(a=>tablesFor(a,schema).map(t=>t.name)));
- assert.equal(schema.tables.length,59);
- const visible=schema.tables.filter(t=>t.book!=='OC_04_CONTABILIDAD');
- assert.equal(covered.size,visible.length);
+ assert.equal(schema.tables.length,13);
+ for(const name of ['CENTROS_COSTO','PRECIOS_HISTORICOS','PROSPECTOS','DOCUMENTOS_FINANCIEROS','PLAN_CUENTAS','ASIENTOS','ASIENTO_LINEAS','PERIODOS','MOVIMIENTOS_SOCIOS']) assert.equal(schema.tables.some(t=>t.name===name),false);
+ const names=new Set(schema.tables.map(t=>t.name));
+ for(const t of schema.tables)for(const f of t.fields)if(f.ref)assert.ok(names.has(f.ref),t.name+'.'+f.name);
+ assert.equal(roles.administrador.areas.length,5);
+ assert.equal(canAccess('operativo','gestion'),false);
+ assert.equal(canAccess('gerencial','gestion'),true);
  assert.equal(tablesFor('maestros',schema).some(t=>t.name==='USUARIOS'),false);
  assert.equal(tablesFor('inexistente',schema).length,0);
 });
