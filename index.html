@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Acceso · Motor rotativo</title>
+<title>Oportunicars · Acceso</title>
+<link rel="stylesheet" href="workspace.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -307,6 +308,8 @@
 
 <div class="titleblock">Plano 01 · Motor rotativo · Esc. 1:1</div>
 
+<script src="schema.js"></script>
+<script src="workspace.js"></script>
 <script>
 (() => {
   // La identidad se verifica con Supabase; no hay claves de usuarios en el frontend.
@@ -586,6 +589,7 @@
   let client, activeId = null, revision = 0, authRevision = 0;
   function lock(value) { goBtn.disabled = value; forgot.disabled = value; }
   function clearView() {
+    window.OCWorkspace.close();
     revision++; busy = false; S.tweenId++; S.rpm = 0;
     S.firing = false; S.cranking = false; svg.classList.remove('running');
     runView.hidden = true; recoveryView.hidden = true; loginView.hidden = false;
@@ -609,7 +613,11 @@
       // El nombre es solo presentación. Nunca se usa para conceder permisos.
       const name = user.user_metadata?.full_name || user.user_metadata?.name ||
         user.email?.split('@')[0] || 'usuario';
+      const workspaceRevision = revision;
       await startEngine(String(name).slice(0, 100));
+      if (activeId === user.id && workspaceRevision === revision && !recovering) {
+        window.OCWorkspace.open({ user, signOut });
+      }
     } catch {
       if (request === authRevision) {
         clearView(); errEl.textContent = 'No se pudo verificar la sesión. Intenta ingresar nuevamente.';
