@@ -28,7 +28,7 @@ Orden de activación:
 4. Ejecutar actualizarReportesSistema() y luego activarActualizacionesSistema(): stock cada seis horas, reportes cada hora. Esas funciones existen, pero no se afirma que los disparadores estén activos sin ejecución exitosa.
 5. Publicar una versión de la web app, probar autenticación, lectura y escritura con una cuenta autorizada. Recién entonces configurar google-config.js con el endpoint y publicar la web.
 
-Google ha bloqueado la ejecución por autorización pendiente. El código guardado en el editor no prueba que la migración ni la conexión se hayan ejecutado.
+El 19 de octubre de 2026 la migración finalizó y se verificaron las tablas compatibles: 5 usuarios, 25 vehículos, 8 conceptos y 426 movimientos. La sincronización real actualizó 25 vehículos; se generaron reportes y activaron los disparadores. Se corrigieron las validaciones que apuntaban a identificadores DEMO y el almacenamiento de fechas como valores de fecha. Las relaciones editadas desde la web se validan en el backend.
 
 ## Entradas bancarias
 
@@ -44,4 +44,4 @@ Faltan cartolas reales de Security Personal, Security Empresa y Banco Chile para
 
 ## Verificación
 
-Pruebas locales de cálculo de patrimonio, consignados, costos vinculados, cuotas, préstamos, permisos, control de versiones y reintentos de importación. UI revisada en Safari con datos ficticios aislados en memoria. Sin prueba de ida y vuelta con Google mientras no se autorice Apps Script.
+Pruebas locales de cálculo de patrimonio, consignados, costos vinculados, cuotas, préstamos, permisos, control de versiones y reintentos de importación. UI real revisada en Safari con la sesión de Alex: rol Gerencia, inventario y 426 movimientos visibles. Se guardó el concepto Claxo sin cambiar sus valores; respuesta de Google confirmada. El servicio rechaza peticiones sin sesión. El dominio admin.oportunicars.cl requiere un certificado HTTPS válido en GitHub Pages; el HTML bloquea el login remoto por HTTP. La vista preview conserva únicamente ejemplos aislados en memoria.

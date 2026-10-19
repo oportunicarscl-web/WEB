@@ -40,3 +40,10 @@ test('Detecta categoría faltante antes de abrir Caja y restringe diagnóstico a
  assert.equal(call({action:'bootstrap'}).ok,false);
  assert.equal(call({action:'schema'}).ok,false);
 });
+test('Fechas del sistema son valores de fecha, conserva cero e identificadores',()=>{
+ const {context}=setup();
+ assert.equal(context.ocCellValue_('fecha_saldo_inicial','2026-10-19').toISOString(),'2026-10-19T12:00:00.000Z');
+ assert.equal(context.ocCellValue_('created_at','2026-10-19T13:00:00Z').toISOString(),'2026-10-19T13:00:00.000Z');
+ assert.equal(context.ocCellValue_('vehiculo_id','2026-10-19'),'2026-10-19');
+ assert.equal(context.ocCellValue_('saldo_inicial',0),0);
+});

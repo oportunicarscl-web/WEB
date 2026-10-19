@@ -38,7 +38,7 @@ function reports(d,today){
  if(cars.some(c=>!c.sold&&(c.modality==='POR_DEFINIR'||c.modality==='PROPIO'&&c.cost===null)))issues.push('Falta modalidad o costo de compra de autos en stock.');
  if(loans.some(l=>l.balance===null||l.balance<0))issues.push('Revisar saldos iniciales o amortizaciones de préstamos.');
  const cash=accountRows.some(a=>a.balance===null)||!accountRows.length?null:accountRows.reduce((s,a)=>s+a.balance,0);
- const stock=cars.filter(c=>!c.sold&&c.status!=='RETIRADO'&&c.modality==='PROPIO').reduce((s,c)=>s+(c.cost||0),0);
+ const stock=cars.some(c=>!c.sold&&c.status!=='RETIRADO'&&(c.modality==='POR_DEFINIR'||c.modality==='PROPIO'&&c.cost===null))?null:cars.filter(c=>!c.sold&&c.status!=='RETIRADO'&&c.modality==='PROPIO').reduce((s,c)=>s+(c.cost||0),0);
  const loanDebt=loans.filter(l=>l.sentido==='RECIBIDO').reduce((s,l)=>s+(l.balance||0),0),loanAsset=loans.filter(l=>l.sentido==='OTORGADO').reduce((s,l)=>s+(l.balance||0),0);
  const fixed=d.fixed.filter(active).filter(f=>f.habilitado==='SI').reduce((s,f)=>s+(n(f.monto_mensual)||0),0);
  const month=today.slice(0,7),monthMoves=confirmed.filter(m=>String(m.fecha_operacion).slice(0,7)===month);

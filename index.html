@@ -691,6 +691,10 @@
     finally { savePass.disabled = false; }
   });
   (async () => {
+    if(location.protocol!=='https:'&&!['127.0.0.1','localhost','[::1]'].includes(location.hostname)){
+      clearView(); lock(true); goBtn.textContent='Se requiere HTTPS';
+      errEl.textContent='Abre esta página con HTTPS. El certificado del dominio debe estar activo antes de iniciar sesión.'; return;
+    }
     try {
       const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.102.0');
       client = createClient('https://lxyqosqgvkgjybgffdob.supabase.co',

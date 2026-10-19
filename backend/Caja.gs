@@ -1,6 +1,6 @@
 // Script properties: OC_MAESTROS_ID, OC_FINANZAS_ID, OC_SUPABASE_URL, OC_SUPABASE_KEY.
 // Deploy as owner. Every data request is authenticated against Supabase AND USUARIOS.
-function doGet() { return ocJson_({ok:true,service:'Oportunicars La Caja',version:3}); }
+function doGet() { return ocJson_({ok:true,service:'Oportunicars Sistema de Gestión',version:3}); }
 function doPost(e) {
   try {
     ocAccountCache_=null;
@@ -61,10 +61,14 @@ function ocValidateConcept_(c){
   if(c.vehicleOperation&&c.nature!==(c.vehicleOperation==='VENTA'?'INGRESO':'COSTO'))throw Error('Compra y arreglo son costos; venta es ingreso.');
 }
 function ocLiteral_(v){return typeof v==='string'&&/^[=+@-]/.test(v)?"'"+v:v;}
+function ocCellValue_(field,value){
+  if(typeof value==='string'&&(/^fecha(?:_|$)/.test(field)||/_at$/.test(field))&&/^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value)){const d=new Date(value.length===10?value+'T12:00:00Z':value);if(!isNaN(d.getTime()))return d;}
+  return value;
+}
 function ocPatchRow_(t,row,patch){
   Object.keys(patch).forEach(k=>{if(t.headers.indexOf(k)<0)throw Error('Falta la columna '+k+'.');});
   const range=t.sheet.getRange(row,1,1,t.headers.length),values=range.getValues()[0],formulas=range.getFormulas()[0];
-  const next=t.headers.map((h,i)=>Object.prototype.hasOwnProperty.call(patch,h)?ocLiteral_(patch[h]):(formulas[i]||values[i]));
+  const next=t.headers.map((h,i)=>{if(!Object.prototype.hasOwnProperty.call(patch,h)&&formulas[i])return formulas[i];const v=Object.prototype.hasOwnProperty.call(patch,h)?patch[h]:values[i];return ocLiteral_(ocCellValue_(h,v));});
   range.setValues([next]);SpreadsheetApp.flush();
 }
 function ocClassify_(p,actor){
