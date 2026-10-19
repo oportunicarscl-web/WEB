@@ -39,6 +39,7 @@
   let host,session=null,role=null,view='',table='',query='',preview=false;
   function node(html) { const t=document.createElement('template');t.innerHTML=html;return t.content; }
   function close() {
+    root.OCCashflow?.reset();
     host?.remove();host=null;session=null;role=null;query='';table='';
     document.body.classList.remove('workspace-open');
     document.title='Oportunicars · Acceso';
@@ -77,6 +78,7 @@
     const search=host.querySelector('#oc-search');
     if(search)search.oninput=()=>{query=search.value;renderTables();};
     host.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>showFields(b.dataset.detail));
+    root.OCCashflow?.mount(host);
 
   }
   function nav(id,text){return `<button data-nav="${id}" class="oc-nav ${view===id?'active':''}" ${view===id?'aria-current="page"':''}>${text}<span>↗</span></button>`;}
@@ -134,6 +136,7 @@
   }
   function moduleView(){
     if(!canAccess(role,view))return pending();
+    if(view==='finanzas'&&!table&&root.OCCashflow)return root.OCCashflow.markup()+`<h2>Registros financieros</h2><div id="oc-tables">${tableCards(tablesFor(view,root.OCSchema))}</div>`;
     const ts=tablesFor(view,root.OCSchema);
     const selected=ts.find(t=>t.name===table);
     if(selected)return `<button data-nav="${view}" class="oc-back">← Volver a ${areas.find(a=>a.id===view).name}</button><section class="oc-card"><div class="oc-section-heading"><div><p class="oc-eyebrow">${esc(selected.book)}</p><h2>${label(selected.name)}</h2></div><button data-detail="${selected.name}">Ver campos y reglas</button></div><p>${esc(selected.grain)}</p><div class="oc-table-scroll"><table><thead><tr>${selected.fields.slice(0,7).map(f=>`<th>${label(f.name)}</th>`).join('')}</tr></thead><tbody><tr><td colspan="7"><div class="oc-empty"><h3>Esta tabla aún no está conectada</h3><p>La estructura está preparada. La consulta y el registro se habilitarán al conectar una fuente con permisos de servidor.</p></div></td></tr></tbody></table></div></section>`;

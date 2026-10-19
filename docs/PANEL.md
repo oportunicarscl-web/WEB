@@ -1,5 +1,7 @@
 # Panel posterior al acceso
 
+Actualización de flujo de caja: consultar [FLUJO_CAJA.md](FLUJO_CAJA.md). Finanzas ya permite preparar archivos Excel/CSV localmente. La integración privada con Google sigue pendiente. Los roles en app_metadata descritos abajo corresponden a la primera implementación; el diseño acordado requiere USUARIOS en Google como autoridad de permisos, con Supabase solo para login.
+
 El login y la recuperación existentes siguen usando Supabase. Tras el acceso, el panel resuelve el rol y abre el resumen correspondiente. No incluye movimientos reales ni credenciales privadas. En el acceso real no muestra indicadores ficticios; la vista previa muestra ejemplos explícitamente señalados. Las 59 tablas se distribuyen en ocho áreas y permiten consultar campos y catálogos.
 
 ## Asignación de cuentas
@@ -23,7 +25,7 @@ Implementa interfaz, navegación, filtro de secciones, diccionario, resumen seg�
 
 La sesión real se verifica con auth.getUser() del login existente. Ocultar navegación es solo presentación: cada endpoint debe verificar JWT y permisos de servidor cuando se conecten datos. No exponer escritura de Apps Script sin autenticación, claves de servicio ni datos privados en archivos estáticos. Supabase requiere RLS para datos; Sheets requiere autorización en su API.
 
-Las 426 operaciones de Mercado Pago permanecen en Sheets. Deben leerse por una API autenticada, conservando clasificación pendiente, dirección desconocida y exclusión del saldo.
+Las 426 operaciones de Mercado Pago están en MOVIMIENTOS_BANCARIOS, vinculadas a la cuenta de Mercado Pago. MP_PENDIENTES es respaldo de origen. Deben leerse por una API autenticada, conservando clasificación pendiente, dirección desconocida y exclusión del saldo. Las cinco cuentas financieras fueron cargadas en el libro Maestros.
 
 preview.html permite revisar perfiles con estructura pública. No autentica ni accede a datos. Puede excluirse del despliegue si no se desea vista previa pública.
 

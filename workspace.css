@@ -100,3 +100,18 @@ body.workspace-open{
 @media(max-width:1250px){#oc-workspace .oc-six{grid-template-columns:repeat(3,minmax(0,1fr))}.oc-management-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.oc-donut-row{flex-wrap:wrap}}
 @media(max-width:800px){.oc-management-grid{grid-template-columns:1fr}.oc-donut-row{flex-wrap:nowrap}.oc-management-intro{display:block}}
 @media(max-width:500px){#oc-workspace .oc-six{grid-template-columns:repeat(2,minmax(0,1fr))}#oc-workspace .oc-six strong{font-size:21px}#oc-workspace h1{font-size:36px}.oc-brand b{font-size:32px}}
+/* Cash review follows the existing ivory / camel workspace. */
+.oc-cash-accounts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:24px 0}
+.oc-cash-accounts button{display:flex;flex-direction:column;gap:12px;text-align:left;padding:18px;border:1px solid #b4935f;background:#faf6ee;color:#3b2f21;font:inherit;cursor:pointer}
+.oc-cash-accounts button[aria-pressed=true]{outline:2px solid #8c6d3f;background:#eee2cf}
+.oc-cash-accounts small,.oc-cash-accounts span{font-size:11px;line-height:1.6}
+.oc-cash-tools{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:20px 0}
+.oc-cash-tools label,.oc-cash-mapping>label{display:flex;flex-direction:column;gap:8px;font-size:12px;max-width:100%}
+#oc-cashflow select,#oc-cashflow input,#oc-cashflow button{font:inherit;max-width:100%}
+#oc-cashflow select,#oc-cashflow input[type=number]{padding:10px;background:#fffaf2;border:1px solid #b4935f;color:#3b2f21}
+#oc-cashflow button{padding:12px;cursor:pointer;border:1px solid #b4935f;background:#f6efe3;color:#3b2f21}
+#oc-cashflow button:disabled{opacity:.45;cursor:not-allowed}
+#oc-cashflow .oc-table-scroll{max-height:560px;overflow:auto}
+#oc-cashflow td{vertical-align:top;min-width:130px;max-width:360px;overflow-wrap:anywhere}
+.oc-cash-mapping{padding:20px;border:1px dashed #b4935f;background:#fffaf2}
+#oc-cashflow [role=status]{color:#8c6d3f;min-height:1.5em}
