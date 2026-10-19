@@ -66,7 +66,7 @@
       '<p class="oc-nav-label">ÁREAS DE TRABAJO</p>'+areas.filter(a=>canAccess(role,a.id)).map(a=>nav(a.id,a.name)).join(''):''}</nav>
       <div class="oc-sidebar-bottom"><small>${preview?'VISTA PREVIA · SIN SESIÓN REAL':'Oportunicars · Panel de trabajo'}</small><button id="oc-signout">Cerrar sesión</button></div></aside>
       <main class="oc-main"><header class="oc-header"><div><p class="oc-eyebrow">OPORTUNICARS / ${role?roles[role].label.toUpperCase():'ACCESO'}</p><h1 tabindex="-1">${title}</h1></div><span class="oc-status">Conexión de datos pendiente</span></header>
-      ${preview?'<div class="oc-preview">Vista previa de interfaz. El perfil de prueba no concede acceso a cuentas ni datos reales.</div>':''}
+      ${preview?'<div class="oc-preview">Vista previa de diseño. Perfil de prueba; sin acceso a cuentas ni datos reales.</div>':''}
       <div id="oc-content">${view==='pendiente'?pending():['operacional','gerencial'].includes(view)?summary():moduleView()}</div>
       <footer class="oc-footer">Los importes y resultados aparecerán cuando exista una fuente conectada y verificada.</footer></main>
     `));
@@ -77,11 +77,50 @@
     const search=host.querySelector('#oc-search');
     if(search)search.oninput=()=>{query=search.value;renderTables();};
     host.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>showFields(b.dataset.detail));
-    host.querySelector('h1')?.focus({preventScroll:true});
+
   }
   function nav(id,text){return `<button data-nav="${id}" class="oc-nav ${view===id?'active':''}" ${view===id?'aria-current="page"':''}>${text}<span>↗</span></button>`;}
   function pending(){return '<section class="oc-empty"><span class="oc-empty-icon">○</span><h2>Tu cuenta está verificada</h2><p>Falta que el administrador asigne tu perfil de trabajo. Una vez asignado, entra nuevamente para ver tu resumen y tus áreas.</p><p>No necesitas crear otra cuenta.</p></section>';}
+  function managerBoard() {
+    const demo=preview;
+    const money=n=>new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}).format(n);
+    const badge=(state,text)=>'<span class="oc-signal '+state+'"><i></i>'+text+'</span>';
+    const empty='<div class="oc-chart-empty">Sin datos verificados para este período</div>';
+    const bars=(values,names,suffix='')=>{
+      const max=Math.max(...values)*1.15;
+      return '<div class="oc-bar-chart" role="img" aria-label="'+esc(names.map((n,i)=>n+': '+values[i]+suffix).join(', '))+'">'+values.map((v,i)=>'<div class="oc-bar-col"><span>'+v+suffix+'</span><div class="oc-bar-track"><i style="height:'+v/max*100+'%"></i></div><small>'+names[i]+'</small></div>').join('')+'</div>';
+    };
+    const donut=(values,names,colors)=>{
+      let acc=0;
+      const stops=values.map((v,i)=>{const start=acc;acc+=v;return colors[i]+' '+start+'% '+acc+'%';}).join(',');
+      return '<div class="oc-donut-row"><div class="oc-donut" style="background:conic-gradient('+stops+')" role="img" aria-label="'+esc(names.map((n,i)=>n+' '+values[i]+'%').join(', '))+'"><span>100<small>%</small></span></div><ul class="oc-legend">'+names.map((n,i)=>'<li><i style="background:'+colors[i]+'"></i><span>'+n+'</span><b>'+values[i]+'%</b></li>').join('')+'</ul></div>';
+    };
+    const panel=(num,title,sub,content,extra='')=>'<article class="oc-card oc-kpi-panel '+extra+'"><div class="oc-panel-title"><span>'+num+'</span><h2>'+title+'</h2></div><p class="oc-panel-sub">'+sub+'</p>'+content+'</article>';
+    const metrics=[['Ventas del mes','12','unidades','ok','Sobre el mes anterior'],['Ingresos',money(85000000),'ventas del período','ok','Tendencia positiva'],['Margen promedio','18%','por vehículo vendido','ok','Dentro del objetivo'],['Autos en stock','25','vehículos','warning','Revisar antigüedad'],['Cuentas por cobrar',money(12000000),'saldo pendiente','warning','En revisión'],['Cuentas por pagar',money(28000000),'obligaciones pendientes','danger','Atención']];
+    const flow='<svg class="oc-flow" viewBox="0 0 360 180" role="img" aria-label="Ejemplo de caja en millones: entradas 15,18,17,26; salidas 7,10,9,15. Semanas 1 a 4"><g stroke="#b4935f" opacity=".2"><path d="M35 25H340M35 65H340M35 105H340M35 145H340"/></g><g fill="#786a58" font-size="10"><text x="6" y="29">30</text><text x="6" y="69">20</text><text x="6" y="109">10</text><text x="15" y="149">0</text><text x="32" y="170">S1</text><text x="130" y="170">S2</text><text x="230" y="170">S3</text><text x="326" y="170">S4</text></g><polyline points="35,85 135,73 235,77 335,41" fill="none" stroke="#526b53" stroke-width="2.5"/><polyline points="35,117 135,105 235,109 335,85" fill="none" stroke="#a55043" stroke-width="2.5" stroke-dasharray="5 3"/><g fill="#526b53"><circle cx="35" cy="85" r="3"/><circle cx="135" cy="73" r="3"/><circle cx="235" cy="77" r="3"/><circle cx="335" cy="41" r="3"/></g><g fill="#a55043"><circle cx="35" cy="117" r="3"/><circle cx="135" cy="105" r="3"/><circle cx="235" cy="109" r="3"/><circle cx="335" cy="85" r="3"/></g></svg><div class="oc-inline-legend">'+badge('ok','Entradas')+badge('danger','Salidas')+'</div>';
+    const states=[['Ventas','ok','Bien'],['Inventario','ok','Bien'],['Cuentas por cobrar','warning','En revisión'],['Cuentas por pagar','danger','Atención'],['Caja / Bancos','ok','Bien'],['Gastos','warning','En control'],['Contabilidad','warning','En proceso']];
+    const checks=[['Conciliación bancaria','ok','Completo'],['Registro de compras','ok','Completo'],['Registro de ventas','ok','Completo'],['Inventario físico','warning','Pendiente'],['Documentos pendientes','danger','Requiere acción'],['Reporte mensual','warning','En preparación']];
+    const rows=items=>'<ul class="oc-status-list">'+items.map(([n,s,t])=>'<li><span>'+n+'</span>'+badge(demo?s:'unknown',demo?t:'Sin verificar')+'</li>').join('')+'</ul>';
+    const cars=[['Toyota Hilux',4500000],['Mazda CX-5',3800000],['Kia Sportage',3200000],['Hyundai Tucson',2900000],['Chevrolet Tracker',2800000]];
+    const notes=['Cobrar a clientes pendientes','Revisar stock en consignación','Revisar pagos a proveedores','Cerrar el mes con contabilidad','Preparar el reporte para directorio','Revisar vehículos que requieren ajuste de precio'];
+    return '<section class="oc-management-intro"><div><p class="oc-eyebrow">TABLERO DE CONTROL / '+(demo?'OCTUBRE 2026 · EJEMPLO':'PERÍODO POR CONECTAR')+'</p><h2>Control hoy, para un mejor mañana.</h2></div><span class="oc-date">'+new Intl.DateTimeFormat('es-CL',{dateStyle:'long',timeZone:'America/Santiago'}).format(new Date())+'</span></section>'+
+    (demo?'<div class="oc-example-note">Cifras ilustrativas de la referencia visual. No son resultados reales de Oportunicars. Las series de gráficos son ejemplos de presentación.</div>':'')+
+    '<section class="oc-metrics oc-six" aria-label="Indicadores gerenciales">'+metrics.map(([n,v,u,s,t])=>'<article><p>'+n+'</p><strong>'+ (demo?v:'—')+'</strong><small>'+u+'</small>'+badge(demo?s:'unknown',demo?t:'Sin datos verificados')+'</article>').join('')+'</section>'+
+    '<div class="oc-management-grid">'+
+    panel('01','Ventas mensuales','Unidades vendidas · evolución del año',demo?bars([3,7,10,12,10,13,12,13,17,21],['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct']):empty)+
+    panel('02','Estado de inventario','Distribución de vehículos · grupos de ejemplo',demo?donut([60,25,15],['Disponibles','Consignados','En preparación'],['#8c6d3f','#c4a678','#b96552']):empty)+
+    panel('03','Rentabilidad por auto','Margen por vehículo · porcentaje',demo?bars([10,22,15,19],['Auto 1','Auto 2','Auto 3','Auto 4'],'%'):empty)+
+    panel('04','Flujo de caja','Últimas 4 semanas · millones de pesos',demo?flow:empty)+
+    panel('05','Semáforo de áreas','Estado y prioridad de revisión',rows(states))+
+    panel('06','Cumplimiento de procesos','Cierre y control administrativo',rows(checks))+
+    panel('07','Composición de gastos','Participación del gasto por categoría',demo?donut([35,25,20,10,10],['Arriendo','Remuneraciones','Marketing','Servicios','Otros'],['#8c6d3f','#b4935f','#cfb58d','#6d7870','#a19a8c']):empty)+
+    panel('08','Top 5 autos más rentables','Utilidad por vehículo · pesos chilenos',demo?'<ol class="oc-ranking">'+cars.map(([n,v],i)=>'<li><span class="oc-rank">0'+(i+1)+'</span><span>'+n+'</span><strong>'+money(v)+'</strong></li>').join('')+'</ol>':empty)+
+    panel('09','Notas y seguimiento','Acuerdos y próximas acciones',demo?'<ul class="oc-notes">'+notes.map(n=>'<li>'+n+'</li>').join(''):'<div class="oc-chart-empty">No hay notas conectadas. Los acuerdos aparecerán aquí al habilitar su registro.</div>')+
+    '</div>';
+  }
+
   function summary() {
+    if(view==='gerencial')return managerBoard();
     const manager=view==='gerencial';
     const metrics=manager?[['Ventas del período','Operaciones cerradas'],['Margen operacional','Ingresos y costos verificados'],['Caja disponible','Cuentas conciliadas'],['Inventario','Vehículos y capital invertido']]:
       [['Pendientes de hoy','Tareas y vencimientos'],['Vehículos en preparación','Trabajo en curso'],['Reservas activas','Seguimiento comercial'],['Próximas entregas','Compromisos por cumplir']];

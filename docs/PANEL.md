@@ -1,6 +1,6 @@
 # Panel posterior al acceso
 
-El login y la recuperación existentes siguen usando Supabase. Tras el acceso, el panel resuelve el rol y abre el resumen correspondiente. No incluye movimientos reales, credenciales privadas ni indicadores ficticios. Las 59 tablas se distribuyen en ocho áreas y permiten consultar campos y catálogos.
+El login y la recuperación existentes siguen usando Supabase. Tras el acceso, el panel resuelve el rol y abre el resumen correspondiente. No incluye movimientos reales ni credenciales privadas. En el acceso real no muestra indicadores ficticios; la vista previa muestra ejemplos explícitamente señalados. Las 59 tablas se distribuyen en ocho áreas y permiten consultar campos y catálogos.
 
 ## Asignación de cuentas
 
@@ -32,3 +32,9 @@ preview.html permite revisar perfiles con estructura pública. No autentica ni a
 Ejecutar: node --test tests/workspace.test.cjs
 Servir esta carpeta y abrir preview.html.
 La comprobación real con las cuatro cuentas y las políticas del backend requiere acceso a su configuración administradora; no queda validada por pruebas de interfaz.
+
+## Identidad visual y tablero gerencial
+
+La interfaz reutiliza el fondo de plano técnico, marfil, camel, Caveat e IBM Plex Mono del home original. El tablero conserva los seis KPI y nueve bloques de la referencia del usuario. Verde, ámbar y rojo se reservan para estados con etiqueta; sin datos el estado es gris y sin verificar.
+
+La vista previa contiene cifras ilustrativas de la imagen, no resultados reales. Las series mensuales y semanales son ejemplos visuales y no deben reconciliarse como una contabilidad real. Disponibles, consignados y en preparación reproducen la referencia: antes de conectar datos se debe definir una partición sin solapamiento (la propiedad y el estado operativo son dimensiones distintas). Los umbrales de alertas todavía requieren definición empresarial y evaluación de datos verificados.
