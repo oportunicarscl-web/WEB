@@ -66,4 +66,17 @@ function completarFechasMercadoPago(){
   return {actualizados:updated,direccionesCompletadas:directions,fallidos:failed,pendientes:missing.length-updated};
  }finally{lock.releaseLock();}
 }
+// Completa la dirección de los movimientos de Mercado Pago que no la traen, solo donde el tipo de operación la prueba:
+// account_fund (depósito a la cuenta) y pos_payment (venta presencial) son ENTRADA. El resto se define al clasificar en la web.
+function completarDireccionesMercadoPago(){
+ const lock=LockService.getScriptLock();if(!lock.tryLock(15000))throw Error('Otro proceso está en curso.');
+ try{
+  const profile=osMpProfile_(),t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),now=new Date().toISOString();let done=0;
+  t.rows.filter(r=>ocProd_(r)&&r.cuenta_id===profile.cuenta_id&&!r.direccion&&['account_fund','pos_payment'].indexOf(String(r.tipo_fuente))>=0&&String(r.estado_fuente||'approved')==='approved').forEach(r=>{
+   const patch={direccion:'ENTRADA',version:Number(r.version||1)+1};if(t.headers.indexOf('updated_at')>=0)patch.updated_at=now;if(t.headers.indexOf('updated_by')>=0)patch.updated_by='SISTEMA_MP';
+   ocPatchRow_(t,r._row,patch);done++;
+  });
+  return {direccionesCompletadas:done};
+ }finally{lock.releaseLock();}
+}
 function activarPagosMercadoPago(){if(!ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='traerPagosMercadoPago'))ScriptApp.newTrigger('traerPagosMercadoPago').timeBased().everyHours(1).create();return {programada:true};}

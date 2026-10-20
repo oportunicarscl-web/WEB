@@ -1,7 +1,7 @@
 // Oportunicars · Carga única + Mercado Pago. Archivo NUEVO: crear 'Carga.gs' y pegar todo.
 // ---- Carga única para la web (v5) ----
 // Lee cada hoja UNA vez y devuelve filas livianas. La web calcula los reportes localmente.
-const OC_MOV_FIELDS=['movimiento_id','cuenta_id','fecha_operacion','monto','direccion','descripcion','referencia','monto_confirmado','incluir_en_saldo','version','concepto_id','concepto_nombre','concepto_version','categoria','naturaleza','tipo_costo','recurrente','operacion_auto','vehiculo_id','estado_clasificacion','actividad_id','proyeccion_id','prestamo_id','componente_prestamo','socio','saldo_cartola','operacion_origen_id','ambiente','estado_registro'];
+const OC_MOV_FIELDS=['movimiento_id','cuenta_id','fecha_operacion','monto','direccion','descripcion','referencia','monto_confirmado','incluir_en_saldo','version','concepto_id','concepto_nombre','concepto_version','categoria','naturaleza','tipo_costo','recurrente','operacion_auto','vehiculo_id','estado_clasificacion','actividad_id','proyeccion_id','prestamo_id','componente_prestamo','socio','saldo_cartola','operacion_origen_id','estado_fuente','tipo_fuente','fecha_original','ambiente','estado_registro'];
 function osSlim_(r,fields){const x=osClean_(r),o={};fields.forEach(k=>{if(x[k]!==undefined)o[k]=x[k];});return o;}
 function osLoad_(actor){
  const maestros='OC_MAESTROS_ID',prod=(book,name)=>ocTable_(book,name).rows.filter(ocProd_);
@@ -84,6 +84,19 @@ function completarFechasMercadoPago(){
    ocPatchRow_(t,batch[i]._row,patch);updated++;
   });
   return {actualizados:updated,direccionesCompletadas:directions,fallidos:failed,pendientes:missing.length-updated};
+ }finally{lock.releaseLock();}
+}
+// Completa la dirección de los movimientos de Mercado Pago que no la traen, solo donde el tipo de operación la prueba:
+// account_fund (depósito a la cuenta) y pos_payment (venta presencial) son ENTRADA. El resto se define al clasificar en la web.
+function completarDireccionesMercadoPago(){
+ const lock=LockService.getScriptLock();if(!lock.tryLock(15000))throw Error('Otro proceso está en curso.');
+ try{
+  const profile=osMpProfile_(),t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),now=new Date().toISOString();let done=0;
+  t.rows.filter(r=>ocProd_(r)&&r.cuenta_id===profile.cuenta_id&&!r.direccion&&['account_fund','pos_payment'].indexOf(String(r.tipo_fuente))>=0&&String(r.estado_fuente||'approved')==='approved').forEach(r=>{
+   const patch={direccion:'ENTRADA',version:Number(r.version||1)+1};if(t.headers.indexOf('updated_at')>=0)patch.updated_at=now;if(t.headers.indexOf('updated_by')>=0)patch.updated_by='SISTEMA_MP';
+   ocPatchRow_(t,r._row,patch);done++;
+  });
+  return {direccionesCompletadas:done};
  }finally{lock.releaseLock();}
 }
 function activarPagosMercadoPago(){if(!ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='traerPagosMercadoPago'))ScriptApp.newTrigger('traerPagosMercadoPago').timeBased().everyHours(1).create();return {programada:true};}

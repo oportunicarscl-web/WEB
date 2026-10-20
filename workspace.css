@@ -159,3 +159,4 @@ body.workspace-open{
 #oc-workspace .oc-fleet-inputs label{display:grid;gap:4px;font-size:12px}
 
 #oc-workspace .oc-nav.oc-nav-soon{color:#b9ad9b;cursor:default}#oc-workspace .oc-nav.oc-nav-soon:hover{background:none}
+#oc-workspace .oc-cash-summary{display:flex;flex-wrap:wrap;gap:8px 18px;margin:10px 0;font-size:13px}#oc-workspace .oc-cash-summary .oc-in{color:#1b7a43;font-weight:650}#oc-workspace .oc-cash-summary .oc-out{color:#b3261e;font-weight:650}#oc-workspace .oc-more{display:block;margin:14px auto}

@@ -47,3 +47,17 @@ test('Fechas del sistema son valores de fecha, conserva cero e identificadores',
  assert.equal(context.ocCellValue_('vehiculo_id','2026-10-19'),'2026-10-19');
  assert.equal(context.ocCellValue_('saldo_inicial',0),0);
 });
+
+test('Mercado Pago: fecha, dirección sugerida y operaciones no efectivas', () => {
+ global.window=global.window||{};
+ delete require.cache[require.resolve('../google-caja.js')];
+ const root={OCSystemCore:{reports:()=>({})}};
+ const fs=require('fs'),vm=require('vm');vm.runInNewContext(fs.readFileSync(require('path').join(__dirname,'../google-caja.js'),'utf8'),{window:root,Intl,Date,console});
+ const g=root.OCGoogleCaja;
+ assert.equal(g.parseDay('17/10/2026'),'2026-10-17');
+ assert.equal(g.parseDay('2026-10-16T14:17:06.000-04:00'),'2026-10-16');
+ const m=g.mapMovement({movimiento_id:'MP-1',cuenta_id:'A',fecha_operacion:'',fecha_original:'2026-10-17T08:15:29.000-04:00',monto:3000000,direccion:'',tipo_fuente:'account_fund',descripcion:'concept cca'},{A:'MERCADO PAGO'});
+ assert.equal(m.date,'2026-10-17');assert.equal(m.direction,'ENTRADA');assert.equal(m.directionInferred,true);
+ assert.equal(g.mapMovement({movimiento_id:'x',cuenta_id:'A',tipo_fuente:'money_transfer'},{}).direction,'');
+ assert.equal(g.effective({estado_fuente:'rejected'}),false);assert.equal(g.effective({estado_fuente:'authorized'}),false);assert.equal(g.effective({estado_fuente:'approved'}),true);
+});
