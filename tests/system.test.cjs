@@ -43,3 +43,4 @@ test('Día de venta = último cobro de venta en caja; ingreso inferido de la pri
  assert.equal(c.lines.filter(l=>l.op==='VENTA').length,2);
  d.operations[0].fecha_ingreso='2026-09-05';assert.equal(core.reports(d,'2026-10-18').cars[0].days,36);
 });
+test('Ids numéricos en caja se unen al inventario de texto y una venta cobrada marca vendido',()=>{const d=data();d.operations=[];d.inventory=[{vehiculo_id:'100',patente:'ARGO'}];d.movements=[movement({vehiculo_id:100,operacion_auto:'VENTA',direccion:'ENTRADA',naturaleza:'INGRESO',monto:4250000,monto_confirmado:'NO',fecha_operacion:'2026-09-30'}),movement({vehiculo_id:100,operacion_auto:'ARREGLO',monto:1000,monto_confirmado:'NO'})];const c=core.reports(d,'2026-10-18').cars[0];assert.equal(c.income,4250000);assert.equal(c.preparation,1000);assert.equal(c.sold,true);assert.equal(c.status,'VENDIDO');assert.equal(c.saleDate,'2026-09-30');});

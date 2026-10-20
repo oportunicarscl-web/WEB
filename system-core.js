@@ -9,19 +9,20 @@ const dirOf=m=>['ENTRADA','SALIDA'].includes(m.direccion)?m.direccion:(['COSTO',
 const usable=m=>n(m.monto)!==null&&Number(m.monto)>=0&&dirOf(m)!=='';
 const active=r=>r.estado_registro!=='ANULADO'&&(!r.ambiente||r.ambiente==='PRODUCCION');
 function reports(d,today){
- const moves=d.movements.filter(active),confirmed=moves.filter(paid).filter(m=>date(m.fecha_operacion)&&m.fecha_operacion<=today),counted=moves.filter(usable).filter(m=>!date(m.fecha_operacion)||m.fecha_operacion<=today).map(m=>({...m,direccion:dirOf(m)})),activities=d.activities.filter(active),ops=d.operations.filter(active);
+ const sid=r=>r.vehiculo_id===undefined||r.vehiculo_id===null||r.vehiculo_id===''?r:{...r,vehiculo_id:String(r.vehiculo_id).trim()};
+ const moves=d.movements.filter(active).map(sid),confirmed=moves.filter(paid).filter(m=>date(m.fecha_operacion)&&m.fecha_operacion<=today),counted=moves.filter(usable).filter(m=>!date(m.fecha_operacion)||m.fecha_operacion<=today).map(m=>({...m,direccion:dirOf(m)})),activities=d.activities.filter(active).map(sid),ops=d.operations.filter(active).map(sid);
  const accountRows=d.accounts.filter(active).map(a=>{
   const opening=n(a.saldo_inicial),cut=date(a.fecha_saldo_inicial),rows=confirmed.filter(m=>m.cuenta_id===a.cuenta_id&&date(m.fecha_operacion)&&cut&&m.fecha_operacion>cut&&m.fecha_operacion<=today);
   return {id:a.cuenta_id,name:a.nombre,balance:opening===null||!cut?null:opening+rows.reduce((s,m)=>s+(m.direccion==='ENTRADA'?1:-1)*Number(m.monto),0)};
  });
- const cars=d.inventory.filter(active).map(v=>{
+ const cars=d.inventory.filter(active).map(sid).map(v=>{
   const o=ops.find(x=>x.vehiculo_id===v.vehiculo_id)||{},ms=counted.filter(m=>m.vehiculo_id===v.vehiculo_id),as=activities.filter(a=>a.vehiculo_id===v.vehiculo_id);
   // Todo sale de la caja asignada al auto: compra (o pago al dueño en consignados), costos y cobros de venta.
   const purchases=ms.filter(m=>m.operacion_auto==='COMPRA'&&m.direccion==='SALIDA'),purchase=purchases.length?purchases.reduce((s,m)=>s+Number(m.monto),0):n(o.costo_compra);
   const preparation=ms.filter(m=>m.naturaleza==='COSTO'&&m.operacion_auto!=='COMPRA'&&m.operacion_auto!=='VENTA').reduce((s,m)=>s+Number(m.monto),0)+as.reduce((s,a)=>s+Math.max(0,(n(a.costo)||0)-ms.filter(m=>m.actividad_id===a.actividad_id&&m.naturaleza==='COSTO'&&m.operacion_auto!=='COMPRA').reduce((sum,m)=>sum+Number(m.monto),0)),0);
   const saleMoves=ms.filter(m=>m.operacion_auto==='VENTA'&&m.direccion==='ENTRADA'),income=saleMoves.reduce((s,m)=>s+Number(m.monto),0);
   const saleDateCaja=saleMoves.map(m=>m.fecha_operacion).sort().pop()||'';
-  const sold=o.estado_auto==='VENDIDO',sale=income>0?income:n(o.precio_venta),own=o.modalidad==='PROPIO';
+  const soldFicha=o.estado_auto==='VENDIDO',sold=soldFicha||(income>0&&o.estado_auto!=='RETIRADO'),sale=income>0?income:n(o.precio_venta),own=o.modalidad==='PROPIO';
   const cost=own&&purchase!==null?purchase+preparation:null;
   // Día de venta = último día que entró dinero por la venta (caja). Ingreso = ficha o, si falta, la primera compra asignada.
   const saleDate=saleDateCaja||(date(o.fecha_venta)?o.fecha_venta:'');
@@ -32,9 +33,9 @@ function reports(d,today){
   // Margen = venta cobrada − compra (o pago al dueño) − costos. En consignados ese margen es la comisión, aunque no se cobre explícita.
   const result=sold&&sale!==null&&purchase!==null?sale-purchase-preparation:null;
   const margin=result!==null&&sale>0?result/sale*100:null;
-  const salePending=!sold&&income>0&&o.estado_auto!=='RETIRADO';
+  const salePending=sold&&!soldFicha;
   const unconfirmed=ms.filter(m=>!paid(m)).length,lines=ms.map(m=>({id:m.movimiento_id,date:date(m.fecha_operacion)||'',text:String(m.descripcion||m.referencia||'Movimiento'),amount:Number(m.monto),dir:m.direccion,op:m.operacion_auto||'',concept:m.concepto_nombre||'',confirmed:paid(m)})).sort((a,b)=>a.date.localeCompare(b.date));
-  return {id:v.vehiculo_id,lines,unconfirmed,hasFicha:!!o.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:o.estado_auto||'POR_REVISAR',modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate,entryInferred,saleDate,activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,cost,sale,income,sold,result,margin,commission:o.modalidad==='CONSIGNADO'?result:null,salePending,saleDateCaja};
+  return {id:v.vehiculo_id,lines,unconfirmed,hasFicha:!!o.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:sold?'VENDIDO':(o.estado_auto||'POR_REVISAR'),modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate,entryInferred,saleDate,activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,cost,sale,income,sold,result,margin,commission:o.modalidad==='CONSIGNADO'?result:null,salePending,saleDateCaja};
  });
  const pending=d.forecasts.filter(active).map(f=>{
   const settled=confirmed.filter(m=>m.proyeccion_id===f.proyeccion_id&&m.direccion===f.direccion).reduce((s,m)=>s+Number(m.monto),0);

@@ -16,14 +16,14 @@ const defs={
 function setup(o={}){options=o;message='';}
 const table=(headers,rows)=>'<div class="oc-table-scroll"><table><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
 const title=v=>String(v||'').replaceAll('_',' ').toLowerCase();
-const car=id=>{const v=(S().inventory||[]).find(x=>x.vehiculo_id===id);return v?[v.vehiculo_id,v.patente,v.marca,v.modelo].filter(Boolean).join(' · '):id;};
+const car=id=>{const v=(S().inventory||[]).find(x=>String(x.vehiculo_id)===String(id));return v?[v.vehiculo_id,v.patente,v.marca,v.modelo].filter(Boolean).join(' · '):id;};
 const button=(tab,text)=>'<button data-system-new="'+tab+'">'+text+'</button>';
 const edit=(tab,id)=>'<button data-system-edit="'+tab+'" data-record="'+esc(id)+'">Editar</button>';
 // Verde si es cero; el número en rojo si falta.
 const count=n=>n===0?'<b class="oc-ok">0 ✓</b>':'<b class="oc-bad">'+esc(n)+'</b>';
 const chip=(text,tone)=>'<span class="oc-chip oc-chip-'+tone+'">'+esc(text)+'</span>';
 
-const carFin=id=>((S().report||{}).cars||[]).find(c=>c.id===id)||null;
+const carFin=id=>((S().report||{}).cars||[]).find(c=>String(c.id)===String(id))||null;
 const pct=v=>v===null||v===undefined?'—':(Math.round(v*10)/10).toLocaleString('es-CL')+'%';
 const tone=v=>v===null||v===undefined?'':v>=0?' class="oc-ok"':' class="oc-bad"';
 // Resumen del auto con lo que ya está asignado en Caja y bancos.
@@ -109,7 +109,7 @@ function carFilters(cars){
 }
 function opsTable(cars){
  const rows=cars.slice().sort((a,b)=>(b.income>0)-(a.income>0)||(b.purchase!==null)-(a.purchase!==null)||b.preparation-a.preparation).map(c=>{
-  const cons=c.modality==='CONSIGNADO',cells=[esc(car(c.id)),esc(title(c.status))+(!c.hasFicha?'<br>'+chip('Falta ficha','bad'):'')+(c.salePending?'<br>'+chip('Cobro de venta: falta marcar vendido','bad'):'')+(c.unconfirmed?'<br><small>'+c.unconfirmed+' importe(s) por confirmar</small>':''),esc(c.days??'—'),(c.purchase===null?(c.sold?'<b class="oc-bad">Falta</b>':'—'):money(c.purchase))+(cons&&c.purchase!==null?'<br><small>pago al dueño</small>':''),c.preparation?money(c.preparation):'—',c.income>0?money(c.income):'—','<b'+tone(c.result)+'>'+(c.result===null?'—':money(c.result))+'</b>',pct(c.margin),(c.salePending?'<button data-os-sell="'+esc(c.id)+'">Marcar vendido</button> ':'')+'<button data-system-edit="AUTOS_OPERACION" data-record="'+esc(c.id)+'">Ficha</button>'];
+  const cons=c.modality==='CONSIGNADO',cells=[esc(car(c.id)),esc(title(c.status))+(!c.hasFicha?'<br>'+chip('Falta ficha','bad'):'')+(c.salePending?'<br>'+chip('Vendido por caja: cerrar ficha','warn'):'')+(c.unconfirmed?'<br><small>'+c.unconfirmed+' importe(s) por confirmar</small>':''),esc(c.days??'—'),(c.purchase===null?(c.sold?'<b class="oc-bad">Falta</b>':'—'):money(c.purchase))+(cons&&c.purchase!==null?'<br><small>pago al dueño</small>':''),c.preparation?money(c.preparation):'—',c.income>0?money(c.income):'—','<b'+tone(c.result)+'>'+(c.result===null?'—':money(c.result))+'</b>',pct(c.margin),(c.salePending?'<button data-os-sell="'+esc(c.id)+'">Marcar vendido</button> ':'')+'<button data-system-edit="AUTOS_OPERACION" data-record="'+esc(c.id)+'">Ficha</button>'];
   return '<tr data-group="'+carGroup(c)+'" data-text="'+esc(car(c.id).toLowerCase())+'"'+(carTab!=='todos'&&carGroup(c)!==carTab?' hidden':'')+'>'+cells.map(x=>'<td>'+x+'</td>').join('')+'</tr>';
  }).join('');
  return '<div class="oc-table-scroll"><table id="os-cars"><thead><tr>'+['Auto','Estado','Días','Compra','Costos','Venta cobrada','Margen','%',''].map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
@@ -177,7 +177,7 @@ function form(tab,id){
 }
 // Vender auto: el cobro y la fecha salen de la caja asignada al auto; aquí solo se marca como vendido.
 function sell(preselect){
- const ops=S().operations||[],cars=((S().report||{}).cars||[]),open=(S().inventory||[]).filter(v=>{const o=ops.find(x=>x.vehiculo_id===v.vehiculo_id);return !o||!['VENDIDO','RETIRADO'].includes(o.estado_auto);});
+ const ops=S().operations||[],cars=((S().report||{}).cars||[]),open=(S().inventory||[]).filter(v=>{const o=ops.find(x=>String(x.vehiculo_id)===String(v.vehiculo_id));return !o||!['VENDIDO','RETIRADO'].includes(o.estado_auto);});
  const ready=open.filter(v=>(carFin(v.vehiculo_id)||{}).income>0),rest=open.filter(v=>!((carFin(v.vehiculo_id)||{}).income>0));
  const option=v=>'<option value="'+esc(v.vehiculo_id)+'" '+(v.vehiculo_id===preselect?'selected':'')+'>'+esc(car(v.vehiculo_id))+'</option>';
  const d=dialog('<form><h2>Vender auto</h2><div class="oc-caja-form"><label>Auto<select name="vehiculo_id"><option value="">Selecciona un auto</option>'+(ready.length?'<optgroup label="Con venta cobrada en caja">'+ready.map(option).join('')+'</optgroup>':'')+'<optgroup label="Sin venta asignada todavía">'+rest.map(option).join('')+'</optgroup></select></label><label>Fecha de venta<input name="fecha_venta" type="date" required value="'+esc(today())+'"></label></div><div id="os-fin"></div><p role="status"></p><button type="submit">Marcar como vendido</button> <button type="button" data-cancel>Cancelar</button></form>');
@@ -187,7 +187,7 @@ function sell(preselect){
  d.querySelector('form').onsubmit=async e=>{
   e.preventDefault();const button=d.querySelector('[type=submit]'),status=d.querySelector('[role=status]');button.disabled=true;
   try{
-   const f=Object.fromEntries(new FormData(e.target)),current=ops.find(x=>x.vehiculo_id===f.vehiculo_id),c=carFin(f.vehiculo_id);
+   const f=Object.fromEntries(new FormData(e.target)),current=ops.find(x=>String(x.vehiculo_id)===String(f.vehiculo_id)),c=carFin(f.vehiculo_id);
    if(!f.vehiculo_id)throw Error('Selecciona un auto.');
    if(!current||!current.modalidad||!current.fecha_ingreso)throw Error('Primero completa la ficha del auto (modalidad e ingreso).');
    if(!c||!(c.income>0))throw Error('Primero asigna el ingreso de la venta a este auto en Caja y bancos (concepto de venta).');
