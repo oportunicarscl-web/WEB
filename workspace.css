@@ -135,3 +135,25 @@ body.workspace-open{
 .oc-bar-row .oc-bar-track{display:block;width:auto;height:14px}.oc-bar-row .oc-bar-track i{margin:0;max-width:none;border:0}.oc-sales-chart{display:flex;align-items:end;gap:5px;height:180px;overflow-x:auto}.oc-sales-chart>div{display:flex;flex:1;min-width:18px;flex-direction:column;align-items:center;justify-content:end}.oc-sales-chart i{display:block;width:80%;background:#947243}.oc-sales-chart small{font-size:9px;writing-mode:vertical-rl;margin-top:8px}.oc-sales-chart b{font-size:10px;font-weight:400}.oc-chart{min-width:0}.oc-chart h2{overflow-wrap:anywhere}
 
 #oc-workspace .oc-amount.oc-in{background:#ccebd8;color:#145c35;border:1px solid #80bd97}#oc-workspace .oc-amount.oc-out{background:#f6d2cf;color:#922b24;border:1px solid #d59088}#oc-workspace .oc-amount small{display:block;font:10px/1.6 var(--mono);letter-spacing:.04em;color:inherit}#oc-workspace .oc-expenses>h2{margin-top:28px}.oc-expenses details{font-size:12px}
+
+/* v5: ingresos verdes, salidas rojas, contadores y avisos */
+#oc-workspace .oc-caja-row{border-left:5px solid transparent;padding-left:16px}
+#oc-workspace .oc-caja-row.oc-row-oc-in{border-left-color:#2f8f5b}
+#oc-workspace .oc-caja-row.oc-row-oc-out{border-left-color:#b8443b}
+#oc-workspace .oc-caja-row.oc-row-oc-unknown{border-left-color:#b9ad98}
+#oc-workspace .oc-caja-row.oc-saving{opacity:.6}
+#oc-workspace .oc-amount.oc-in{color:#0f6b3a;font-weight:700}
+#oc-workspace .oc-amount.oc-out{color:#b3261e;font-weight:700}
+#oc-workspace .oc-ok{color:#1c7a47;font-weight:700}
+#oc-workspace .oc-bad{color:#c0261d;font-weight:800}
+#oc-workspace .oc-pos{color:#1c7a47}
+#oc-workspace .oc-neg{color:#c0261d}
+#oc-workspace .oc-chip{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600}
+#oc-workspace .oc-chip-ok{background:#ccebd8;color:#145c35}
+#oc-workspace .oc-chip-bad{background:#f6d2cf;color:#922b24}
+#oc-workspace .oc-msg-warn{color:#922b24;background:#f6d2cf;border:1px solid #d59088;padding:10px 12px;border-radius:4px}
+#oc-workspace .oc-warn{background:#fbeceb;border:1px solid #d59088;border-radius:4px;padding:10px 14px;margin:12px 0}
+#oc-workspace .oc-warn ul{margin:6px 0 0 18px;padding:0}
+#oc-workspace .oc-metrics article small{display:block;color:#786a58;font-size:11px;margin-top:4px}
+#oc-workspace .oc-fleet-inputs{display:flex;gap:18px;flex-wrap:wrap;margin:12px 0}
+#oc-workspace .oc-fleet-inputs label{display:grid;gap:4px;font-size:12px}

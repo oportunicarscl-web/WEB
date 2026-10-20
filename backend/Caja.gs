@@ -8,6 +8,8 @@ function doPost(e) {
     const p=JSON.parse(e.postData.contents),actor=ocActor_(p.token);
     if(p.action==='bootstrap')return ocJson_({ok:true,data:ocBootstrap_(actor)});
     if(p.action==='system')return ocJson_({ok:true,data:osData_(actor)});
+    if(p.action==='load'&&typeof osLoad_==='function')return ocJson_({ok:true,data:osLoad_(actor)});
+    if(p.action==='inventory'&&typeof osInventory_==='function')return ocJson_({ok:true,data:osInventory_()});
     if(p.action==='schema'){if(!actor.manage)throw Error('Acceso restringido.');return ocJson_({ok:true,data:revisarEstructuraCaja()});}
     const lock=LockService.getScriptLock();if(!lock.tryLock(15000))throw Error('Hay otro guardado en curso. Intenta nuevamente.');
     try {
@@ -49,8 +51,9 @@ function ocConcept_(r){return {id:String(r.concepto_id),name:String(r.nombre),ca
 function ocInventory_(){return ocTable_('OC_MAESTROS_ID','VEHICULOS').rows.filter(ocProd_).map(r=>({id:String(r.vehiculo_id),patente:String(r.patente||''),modelo:[r.marca,r.modelo,r.version_vehiculo].filter(Boolean).join(' ')}));}
 function ocMovement_(r,accounts){
   const c=r.concepto_id?{id:String(r.concepto_id),name:String(r.concepto_nombre),version:Number(r.concepto_version),category:String(r.categoria||''),nature:String(r.naturaleza),cost:String(r.tipo_costo),recurring:r.recurrente==='SI',vehicleOperation:String(r.operacion_auto||''),vehicleId:r.vehiculo_id?String(r.vehiculo_id):null}:null;
-  return {id:String(r.movimiento_id),version:Number(r.version||1),account:accounts[String(r.cuenta_id)]||String(r.cuenta_id),description:String(r.descripcion||r.referencia||'Movimiento'),amount:typeof r.monto==='number'?r.monto:null,direction:String(r.direccion||''),confirmed:r.monto_confirmado==='SI'&&r.incluir_en_saldo==='SI',status:c?(r.estado_clasificacion|| (c.vehicleOperation&&!c.vehicleId?'POR_ASIGNAR_AUTO':'CLASIFICADO')):'PENDIENTE',classification:c,activityId:String(r.actividad_id||''),forecastId:String(r.proyeccion_id||''),prestamoId:String(r.prestamo_id||''),loanComponent:String(r.componente_prestamo||''),socio:String(r.socio||'')};
+  return {id:String(r.movimiento_id),version:Number(r.version||1),date:ocDay_(r.fecha_operacion),account:accounts[String(r.cuenta_id)]||String(r.cuenta_id),description:String(r.descripcion||r.referencia||'Movimiento'),amount:typeof r.monto==='number'?r.monto:null,direction:String(r.direccion||''),confirmed:r.monto_confirmado==='SI'&&r.incluir_en_saldo==='SI',status:c?(r.estado_clasificacion|| (c.vehicleOperation&&!c.vehicleId?'POR_ASIGNAR_AUTO':'CLASIFICADO')):'PENDIENTE',classification:c,activityId:String(r.actividad_id||''),forecastId:String(r.proyeccion_id||''),prestamoId:String(r.prestamo_id||''),loanComponent:String(r.componente_prestamo||''),socio:String(r.socio||'')};
 }
+function ocDay_(v){return v instanceof Date?Utilities.formatDate(v,'America/Santiago','yyyy-MM-dd'):String(v||'').slice(0,10);}
 function ocAccounts_(){const out={};ocTable_('OC_MAESTROS_ID','CUENTAS_FINANCIERAS').rows.filter(ocProd_).forEach(r=>out[String(r.cuenta_id)]=String(r.nombre));return out;}
 function ocBootstrap_(actor){const check=revisarEstructuraCaja();if(!check.compatible)throw Error('La estructura de Google debe actualizarse antes de usar Caja: '+check.hojas.filter(r=>!r.compatible).map(r=>r.hoja+': '+(r.faltan||[r.error]).join(', ')).join('; '));return {profile:actor,inventory:ocInventory_(),concepts:ocTable_('OC_MAESTROS_ID','CONCEPTOS_CAJA').rows.filter(r=>r.habilitado==='SI').map(ocConcept_),movements:ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS').rows.filter(ocProd_).map(r=>ocMovement_(r,ocAccountsCached_()))};}
 // Request-local cache only; never caches tokens or permissions.
@@ -58,7 +61,7 @@ var ocAccountCache_;
 function ocAccountsCached_(){return ocAccountCache_||(ocAccountCache_=ocAccounts_());}
 function ocValidateConcept_(c){
   if(!c||typeof c.id!=='string'||!/^[a-zA-Z0-9_-]{1,80}$/.test(c.id)||typeof c.name!=='string'||!c.name.trim()||c.name.length>100||typeof c.category!=='string'||!c.category.trim()||c.category.length>80)throw Error('Nombre o categoría inválidos.');
-  if(['GASTO','COSTO','INGRESO','TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].indexOf(c.nature)<0||['FIJO','VARIABLE','NO_APLICA'].indexOf(c.cost)<0||['','COMPRA','ARREGLO','VENTA'].indexOf(c.vehicleOperation)<0||typeof c.recurring!=='boolean')throw Error('Clasificación inválida.');
+  if(['GASTO','COSTO','INGRESO','TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].indexOf(c.nature)<0||['FIJO','VARIABLE','NO_APLICA'].indexOf(c.cost)<0||['','COMPRA','ARREGLO','VENTA','COSTO_AUTO'].indexOf(c.vehicleOperation)<0||typeof c.recurring!=='boolean')throw Error('Clasificación inválida.');
   if(c.vehicleOperation&&c.nature!==(c.vehicleOperation==='VENTA'?'INGRESO':'COSTO'))throw Error('Compra y arreglo son costos; venta es ingreso.');
 }
 function ocLiteral_(v){return typeof v==='string'&&/^[=+@-]/.test(v)?"'"+v:v;}

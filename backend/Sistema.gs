@@ -25,6 +25,24 @@ function osData_(actor){
  const result=OCSystemCore.reports(d,today);
  return {inventory:d.inventory,operations:d.operations,activities:d.activities,fixed:d.fixed,forecasts:d.forecasts,loans:d.loans,accounts:financial?d.accounts:[],canFinance:financial,report:financial?result:{today,cars:result.cars,unclassified:result.unclassified},links:{forecasts:osRows_('PROYECCIONES').map(f=>({proyeccion_id:f.proyeccion_id,fecha:f.fecha,direccion:f.direccion,descripcion:f.descripcion,vehiculo_id:f.vehiculo_id})),loans:osRows_('PRESTAMOS').map(l=>({prestamo_id:l.prestamo_id,nombre:l.nombre}))},sync:PropertiesService.getScriptProperties().getProperty('OC_CLAXO_LAST_SYNC')||null};
 }
+// ---- Carga única para la web (v5) ----
+// Lee cada hoja UNA vez y devuelve filas livianas. La web calcula los reportes localmente.
+const OC_MOV_FIELDS=['movimiento_id','cuenta_id','fecha_operacion','monto','direccion','descripcion','referencia','monto_confirmado','incluir_en_saldo','version','concepto_id','concepto_nombre','concepto_version','categoria','naturaleza','tipo_costo','recurrente','operacion_auto','vehiculo_id','estado_clasificacion','actividad_id','proyeccion_id','prestamo_id','componente_prestamo','socio','saldo_cartola','operacion_origen_id','ambiente','estado_registro'];
+function osSlim_(r,fields){const x=osClean_(r),o={};fields.forEach(k=>{if(x[k]!==undefined)o[k]=x[k];});return o;}
+function osLoad_(actor){
+ const maestros='OC_MAESTROS_ID',prod=(book,name)=>ocTable_(book,name).rows.filter(ocProd_);
+ return {
+  profile:actor,
+  inventory:prod(maestros,'VEHICULOS').map(osClean_),operations:osRows_('AUTOS_OPERACION'),activities:osRows_('ACTIVIDADES_AUTOS'),forecasts:osRows_('PROYECCIONES'),loans:osRows_('PRESTAMOS'),accounts:prod(maestros,'CUENTAS_FINANCIERAS').map(osClean_),
+  concepts:ocTable_(maestros,'CONCEPTOS_CAJA').rows.filter(r=>r.habilitado==='SI').map(ocConcept_),
+  movements:prod('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS').map(r=>osSlim_(r,OC_MOV_FIELDS)),
+  companyStart:PropertiesService.getScriptProperties().getProperty('OC_FECHA_CREACION')||'',
+  sync:PropertiesService.getScriptProperties().getProperty('OC_CLAXO_LAST_SYNC')||null,
+  today:Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd')
+ };
+}
+// Tras sincronizar Claxo solo cambia el inventario: se pide únicamente esa hoja.
+function osInventory_(){return {inventory:ocTable_('OC_MAESTROS_ID','VEHICULOS').rows.filter(ocProd_).map(osClean_),sync:PropertiesService.getScriptProperties().getProperty('OC_CLAXO_LAST_SYNC')||null};}
 function osEnsure_(book,name,headers){
  let sheet=book.getSheetByName(name);if(!sheet)sheet=book.insertSheet(name);
  const width=sheet.getLastColumn(),old=width?sheet.getRange(1,1,1,width).getValues()[0].map(String):[];

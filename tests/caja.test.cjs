@@ -31,3 +31,10 @@ test('Editar concepto no cambia clasificaciones anteriores ni admite duplicados'
 test('Gasto clasificado muestra egreso rojo aun si banco no entrega dirección; no confirma dinero',()=>{const m={amount:100377,confirmed:false,direction:'',classification:{id:'claxo',nature:'GASTO'}};a.equal(c.displayDirection(m),'SALIDA');a.equal(m.confirmed,false);a.equal(c.displayDirection({...m,classification:{nature:'INGRESO'}}),'ENTRADA');a.equal(c.displayDirection({...m,classification:null}),'');a.equal(c.displayDirection({...m,direction:'ENTRADA'}),'ENTRADA');});
 test('Claxo permanece visible entre gastos, separado de pagos confirmados',()=>{const rows=[{amount:100377,confirmed:false,classification:{id:'claxo',nature:'GASTO'}}];const g=c.expenseGroups(c.defaults,rows).find(g=>g.concept.id==='claxo');a.equal(g.registered,100377);a.equal(g.confirmed,0);a.equal(g.pending.length,1);a.equal(c.expenseGroups(c.defaults,[]).find(g=>g.concept.id==='claxo').rows.length,0);});
 test('Clasificaciones históricas no desaparecen si cambió el ID del catálogo',()=>{const m={amount:100377,confirmed:false,classification:{id:'LEGACY-CLAXO',name:'Pago recurrente Claxo',nature:'GASTO'}};const g=c.expenseGroups(c.defaults,[m]);a.equal(g.find(x=>x.concept.id==='claxo').registered,100377);a.equal(g.flatMap(x=>x.rows).length,1);});
+test('Costo del auto: concepto válido, suma al resultado del auto',()=>{
+ const c=require('../caja.js'),k={id:'lav',name:'Lavado',category:'Vehículos',nature:'COSTO',cost:'VARIABLE',recurring:false,vehicleOperation:'COSTO_AUTO',version:1};
+ a.equal(c.validate(k).vehicleOperation,'COSTO_AUTO');a.throws(()=>c.validate({...k,nature:'GASTO'}));
+ const m={id:'m',direction:'SALIDA',amount:20,confirmed:false},next=c.classify(m,k,'v1',[{id:'v1'}]);
+ a.equal(next.status,'CLASIFICADO');a.equal(c.classify(m,k,'',[{id:'v1'}]).status,'POR_ASIGNAR_AUTO');
+ a.equal(c.vehicleTotals([next],'v1').repairs,0);a.equal(c.vehicleTotals([{...next,confirmed:true}],'v1').repairs,20);
+});

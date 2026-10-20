@@ -35,3 +35,7 @@ test('Contabilidad queda fuera del menú; las tablas se conservan y usuarios no 
  assert.equal(tablesFor('maestros',schema).some(t=>t.name==='USUARIOS'),false);
  assert.equal(tablesFor('inexistente',schema).length,0);
 });
+test('Áreas: Caja y bancos, Autos y operación, Finanzas y patrimonio, Compromisos no caja',()=>{
+ assert.deepEqual(roles.administrador.areas.slice(0,4),['finanzas','operaciones','gestion','compromisos']);
+ assert.ok(!/OCSistema\?\.refresh/.test(require('node:fs').readFileSync(require.resolve('../workspace.js'),'utf8')));
+});

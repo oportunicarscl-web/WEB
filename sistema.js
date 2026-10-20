@@ -2,42 +2,55 @@
 'use strict';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>Number.isFinite(n)?new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}).format(n):'Por completar';
-let state={},options={},host,view='',busy=false,message='';
+let options={},host,view='',busy=false,message='';
+// Toda la lectura sale de memoria (el store). No hay consultas a Google al navegar entre vistas.
+const S=()=>options.store?options.store.state():{};
+const today=()=>options.store?options.store.today():new Date().toISOString().slice(0,10);
+
 const defs={
- VEHICULOS:{title:'Registrar auto histórico o nuevo',key:'vehiculo_id',data:'inventory',fields:[['patente','Patente','text'],['marca','Marca','text'],['modelo','Modelo','text'],['anio','Año','number']]},
+ VEHICULOS:{title:'Registrar auto',key:'vehiculo_id',data:'inventory',fields:[['patente','Patente','text'],['marca','Marca','text'],['modelo','Modelo','text'],['anio','Año','number']]},
  AUTOS_OPERACION:{title:'Ficha del auto',key:'vehiculo_id',data:'operations',fields:[['vehiculo_id','Auto','auto'],['modalidad','Modalidad',['PROPIO','CONSIGNADO']],['fecha_ingreso','Ingreso','date'],['estado_auto','Estado',['PREPARACION','DISPONIBLE','RESERVADO','VENDIDO','RETIRADO']],['costo_compra','Costo de compra','number'],['fecha_venta','Fecha de venta','date'],['precio_venta','Precio de venta','number'],['comision_consignacion','Comisión de consignación','number'],['notas','Notas','text']]},
- ACTIVIDADES_AUTOS:{title:'Actividad del auto',key:'actividad_id',data:'activities',fields:[['vehiculo_id','Auto','auto'],['fecha','Fecha','date'],['tipo','Actividad',['ESTACIONAMIENTO','ARREGLO','LIMPIEZA','FOTOS','OTRO']],['descripcion','Detalle','text'],['costo','Costo previsto o total','number'],['estado','Estado',['PENDIENTE','EN_CURSO','HECHO']]]},
- COSTOS_FIJOS:{title:'Costo fijo mensual',key:'costo_fijo_id',data:'fixed',fields:[['nombre','Nombre','text'],['monto_mensual','Monto mensual','number'],['dia_pago','Día de pago (1–28)','number'],['habilitado','Activo',['SI','NO']]]},
- PROYECCIONES:{title:'Compromiso no caja',key:'proyeccion_id',data:'forecasts',fields:[['fecha','Fecha esperada','date'],['direccion','Dirección',['ENTRADA','SALIDA']],['tipo','Tipo',['CUOTA_VENTA','INGRESO_ESPERADO','DEUDA','CONSIGNACION','GASTO_PREVISTO','SERVICIO_30_DIAS']],['descripcion','Descripción','text'],['vehiculo_id','Auto, si corresponde','auto-optional'],['monto','Monto','number']]},
+ PROYECCIONES:{title:'Compromiso de cobro o pago',key:'proyeccion_id',data:'forecasts',fields:[['fecha','Fecha esperada','date'],['direccion','Dirección',['ENTRADA','SALIDA']],['tipo','Tipo',['CUOTA_VENTA','INGRESO_ESPERADO','DEUDA','CONSIGNACION','GASTO_PREVISTO','SERVICIO_30_DIAS']],['descripcion','Descripción','text'],['vehiculo_id','Auto, si corresponde','auto-optional'],['monto','Monto','number']]},
  PRESTAMOS:{title:'Préstamo',key:'prestamo_id',data:'loans',fields:[['nombre','Nombre / contraparte','text'],['sentido','Tipo',['RECIBIDO','OTORGADO']],['saldo_inicial','Principal pendiente al cierre de la fecha','number'],['fecha_saldo','Fecha del saldo','date'],['fecha_vencimiento','Vencimiento','date']]}
 };
-function setup(o={}){options=o;state=o.data||{};message='';}
+function setup(o={}){options=o;message='';}
 const table=(headers,rows)=>'<div class="oc-table-scroll"><table><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
 const title=v=>String(v||'').replaceAll('_',' ').toLowerCase();
-const car=id=>{const v=(state.inventory||[]).find(x=>x.vehiculo_id===id);return v?[v.vehiculo_id,v.patente,v.marca,v.modelo].filter(Boolean).join(' · '):id;};
+const car=id=>{const v=(S().inventory||[]).find(x=>x.vehiculo_id===id);return v?[v.vehiculo_id,v.patente,v.marca,v.modelo].filter(Boolean).join(' · '):id;};
 const button=(tab,text)=>'<button data-system-new="'+tab+'">'+text+'</button>';
-function markup(v){view=v;if(!options.connected)return '<section class="oc-card"><h2>'+({operaciones:'Autos y operación',gestion:'Finanzas y patrimonio',analitica:'Reportes consolidados',parametros:'Configuración'}[v])+'</h2><p>La conexión con Google todavía no está activada. Aquí aparecerán tus datos reales.</p><p>El sistema conserva el inventario de Claxo, las actividades de cada auto y los movimientos de tus cuentas.</p></section>';
- const r=state.report||{},cars=r.cars||[];
- let content='';
- if(v==='operaciones')content='<section class="oc-card"><h2>Autos y operación</h2><p>Ingreso, preparación, estacionamiento, venta y resultado por auto.</p><div class="oc-system-actions">'+button('VEHICULOS','Registrar auto')+button('AUTOS_OPERACION','Completar ficha')+button('ACTIVIDADES_AUTOS','Registrar actividad')+(options.canManage?'<button id="os-sync">Actualizar stock de Claxo</button>':'')+'</div><p>Última sincronización: '+esc(state.sync||'Pendiente')+'</p>'+table(['Auto','Estado','Días en stock / estacionamiento','Costos registrados','Venta / cobrado','Resultado',''],cars.map(c=>[esc(car(c.id)),esc(title(c.status)),esc((c.days??'—')+' / '+c.parkingDays),money(c.cost),money(c.sale)+' / '+money(c.income),money(c.result),'<button data-system-edit="AUTOS_OPERACION" data-record="'+esc(c.id)+'">Editar ficha</button>']))+'</section><section class="oc-card"><h2>Actividades</h2>'+table(['Auto','Fecha','Actividad','Estado','Costo',''],(state.activities||[]).map(a=>[esc(car(a.vehiculo_id)),esc(a.fecha),esc(title(a.tipo)),esc(title(a.estado)),money(Number(a.costo)),edit('ACTIVIDADES_AUTOS',a.actividad_id)]))+'</section>';
- if(v==='gestion'||v==='analitica'||v==='compromisos'){
-  if(!state.canFinance)return '<section class="oc-card">Tu perfil no tiene acceso a finanzas.</section>';
-  const metrics=[['Caja',r.cash],['Stock propio al costo',r.stock],['Cuotas por cobrar',r.receivable],['Deudas',r.debt],['Patrimonio estimado',r.patrimony],['Costos fijos mensuales',r.fixedMonthly]];
-  content='<section class="oc-metrics oc-six">'+metrics.map(([label,value])=>'<article><p>'+label+'</p><strong>'+money(value)+'</strong></article>').join('')+'</section>'+(r.issues?.length?'<section class="oc-card"><h2>Por completar antes de cerrar patrimonio</h2><ul>'+r.issues.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></section>':'<p>Patrimonio sobre información registrada. Revisar que no falten deudas o costos.</p>');
-  if(v==='compromisos')content='<section class="oc-card"><h2>Compromisos no caja</h2><p>Registra servicios a plazo, ventas a crédito o deudas. Se descuentan al vincular el cobro o pago en Caja y bancos; crearlos aquí no mueve dinero.</p></section>';
-  if(v==='gestion'||v==='compromisos')content+='<section class="oc-card"><h2>Proyecciones y costos fijos</h2><div class="oc-system-actions">'+button('COSTOS_FIJOS','Agregar costo fijo')+button('PROYECCIONES','Crear compromiso de cobro o pago')+button('PRESTAMOS','Agregar préstamo')+'</div><p>Los costos fijos son una previsión mensual separada. No se suman como pagos realizados ni se duplican con los movimientos.</p>'+table(['Costo fijo','Monto mensual','Estado',''],(state.fixed||[]).map(x=>[esc(x.nombre),money(Number(x.monto_mensual)),x.habilitado==='SI'?'Activo':'Pausado',edit('COSTOS_FIJOS',x.costo_fijo_id)]))+'</section><section class="oc-card"><h2>Ingresos y pagos esperados</h2>'+table(['Fecha','Concepto','Tipo','Pendiente',''],(r.forecasts||[]).map(x=>[esc(x.fecha),esc(x.descripcion),esc(title(x.tipo)),money(x.pending),edit('PROYECCIONES',x.proyeccion_id)]))+'</section><section class="oc-card"><h2>Préstamos</h2>'+table(['Nombre','Tipo','Principal pendiente',''],(r.loans||[]).map(x=>[esc(x.nombre),esc(title(x.sentido)),money(x.balance),edit('PRESTAMOS',x.prestamo_id)]))+'</section>';
-  content+='<section class="oc-card"><h2>Resultado por auto</h2><p>Incluye costos operativos registrados. Consignados muestran comisión menos preparación, no el precio completo como ingreso propio.</p>'+table(['Auto','Modalidad','Compra','Preparación','Venta','Resultado'],cars.map(c=>[esc(car(c.id)),esc(title(c.modality)),money(c.purchase),money(c.preparation),money(c.sale),money(c.result)]))+'</section>';
-  if(v==='analitica')content+='<section class="oc-card"><h2>Flujo del mes</h2><p>Entradas: '+money(r.entries)+' · Salidas: '+money(r.exits)+' · Autos vendidos: '+esc(r.salesMonth)+' · Movimientos por clasificar: '+esc(r.unclassified)+'</p><p>Las transferencias internas se excluyen del flujo consolidado. Las entradas de capital y préstamos no se presentan como utilidad.</p></section>';
- }
- if(v==='parametros')content='<section class="oc-card"><h2>Configuración del sistema</h2><p>Los usuarios y permisos se administran en la hoja USUARIOS de Google. Supabase se utiliza únicamente para iniciar sesión.</p><h3>Inicio de la historia</h3><input id="os-start" type="date" value="'+esc(state.report?.dashboard?.start||'2025-10-01')+'"><button id="os-start-save">Guardar fecha de inicio</button><h3>Saldos de apertura por cuenta</h3><p>Saldo al cierre del día indicado. El sistema suma movimientos posteriores; no vuelve a sumar ese día.</p>'+table(['Cuenta','Saldo inicial','Fecha de corte',''],(state.accounts||[]).map(a=>[esc(a.nombre),a.saldo_inicial===''?'Por completar':money(Number(a.saldo_inicial)),esc(a.fecha_saldo_inicial),'<button data-balance="'+esc(a.cuenta_id)+'">Editar saldo</button>']))+'</section>';
- if(v==='analitica')content=management(r,cars)+(root.OCCaja?.expenseMarkup()||'');
+const edit=(tab,id)=>'<button data-system-edit="'+tab+'" data-record="'+esc(id)+'">Editar</button>';
+// Verde si es cero; el número en rojo si falta.
+const count=n=>n===0?'<b class="oc-ok">0 ✓</b>':'<b class="oc-bad">'+esc(n)+'</b>';
+const chip=(text,tone)=>'<span class="oc-chip oc-chip-'+tone+'">'+esc(text)+'</span>';
+
+function markup(v){
+ view=v;
+ const labels={operaciones:'Autos y operación',gestion:'Finanzas y patrimonio',compromisos:'Compromisos no caja',analitica:'Reportes consolidados',parametros:'Configuración'};
+ if(!options.connected)return '<section class="oc-card"><h2>'+(labels[v]||'Resumen')+'</h2><p>La conexión con Google todavía no está activada. Aquí aparecerán tus datos reales.</p></section>';
+ const st=S(),r=st.report||{},cars=r.cars||[];let content='';
  if(v==='resumen')content=operational(r,cars);
- return '<div id="os-panel"><p role="status" id="os-message">'+esc(message)+'</p>'+content+'</div>';
+ else if(v==='analitica')content=management(r,cars)+(root.OCCaja?.expenseMarkup()||'');
+ else if(!st.canFinance&&v!=='operaciones')content='<section class="oc-card">Tu perfil no tiene acceso a finanzas.</section>';
+ else if(v==='operaciones')content=operations(st,cars);
+ else if(v==='gestion')content=root.OCFinanzas?root.OCFinanzas.markup(st.raw,r,today()):'';
+ else if(v==='compromisos')content=commitments(r);
+ else if(v==='parametros')content=settings(st,r);
+ return '<div id="os-panel"><p role="status" id="os-message" class="'+(message.startsWith('⚠')?'oc-msg-warn':'')+'">'+esc(message)+'</p>'+content+'</div>';
 }
 
-function bars(label,items,moneyValues=false){
+// ---------- Seguimiento operacional ----------
+function operational(r,cars){
+ const a=r.dashboard||{},day=r.today||today(),total=new Date(Number(day.slice(0,4)),Number(day.slice(5,7)),0).getDate(),pending=a.pendingAccounts||[];
+ const open=pending.reduce((s,x)=>s+x.count,0);
+ return '<section class="oc-metrics"><article><p>Stock</p><strong>'+(a.stockCount??cars.filter(c=>!c.sold).length)+'</strong></article><article><p>Avance del mes</p><strong>Día '+Number(day.slice(8))+' / '+total+'</strong></article><article><p>Movimientos por resolver</p><strong>'+count(open)+'</strong></article></section>'+
+ '<section class="oc-card"><h2>Movimientos sin conciliar</h2>'+table(['Cuenta','Sin clasificar','Por asignar auto','Total'],pending.map(x=>[esc(x.name),count(x.noConcept),count(x.carPending),count(x.count)]).concat([['<b>Todas las cuentas</b>',count(pending.reduce((s,x)=>s+x.noConcept,0)),count(pending.reduce((s,x)=>s+x.carPending,0)),count(open)]]))+'</section>'+
+ '<section class="oc-card"><h2>Inventario propio</h2>'+table(['Auto','Estado','Ingreso','Días en inventario'],cars.filter(c=>c.modality==='PROPIO'&&!c.sold&&c.status!=='RETIRADO').map(c=>[esc(car(c.id)),esc(title(c.status)),esc(c.entryDate),esc(c.days??'—')]))+'</section>';
+}
+
+// ---------- Resumen gerencial ----------
+function bars(label,items,moneyValues=false,extra=''){
  const max=Math.max(1,...items.map(x=>Math.abs(x[1]||0)));
- return '<section class="oc-card oc-chart"><h2>'+esc(label)+'</h2>'+(!items.length?'<p>Sin registros todavía.</p>':items.map(([name,value])=>'<div class="oc-bar-row"><span>'+esc(name)+'</span><div class="oc-bar-track"><i style="width:'+ (value===null?0:Math.abs(value)/max*100)+'%;background:'+(value<0?'#a23e38':'#947243')+'"></i></div><b>'+ (value===null?'Sin datos':moneyValues?money(value):esc(value))+'</b></div>').join(''))+'</section>';
+ return '<section class="oc-card oc-chart"><h2>'+esc(label)+'</h2>'+(!items.length?'<p>Sin registros todavía.</p>':items.map(([name,value])=>'<div class="oc-bar-row"><span>'+esc(name)+'</span><div class="oc-bar-track"><i style="width:'+(value===null?0:Math.abs(value)/max*100)+'%;background:'+(value<0?'#a23e38':'#947243')+'"></i></div><b>'+(value===null?'Sin datos':moneyValues?money(value):esc(value))+'</b></div>').join(''))+extra+'</section>';
 }
 function trend(label,rows,series){
  const vals=rows.flatMap(r=>series.map(s=>r[s[0]])).filter(Number.isFinite),low=Math.min(0,...vals),high=Math.max(1,...vals),range=high-low||1;
@@ -48,19 +61,141 @@ function trend(label,rows,series){
  return '<section class="oc-card oc-chart"><h2>'+esc(label)+'</h2>'+svg+'<p>'+series.map(s=>'<span style="color:'+s[2]+'">● '+esc(s[1])+'</span>').join(' · ')+'</p>'+(!vals.length?'<p>Sin saldos confirmados para este período.</p>':'')+'<details><summary>Ver valores por mes</summary>'+table(['Mes',...series.map(s=>s[1])],rows.map(r=>[esc(r.month),...series.map(s=>money(r[s[0]]))]))+'</details></section>';
 }
 function salesChart(rows){const max=Math.max(1,...rows.map(r=>r.sales));return '<section class="oc-card oc-chart"><h2>Ventas mensuales</h2><div class="oc-sales-chart">'+rows.map(r=>'<div><b>'+r.sales+'</b><i style="height:'+r.sales/max*120+'px"></i><small>'+esc(r.month.slice(2))+'</small></div>').join('')+'</div><p>Ventas registradas por mes</p></section>';}
-function management(r,cars){const a=r.dashboard||{},h=a.history||[];
- const metrics=[['Ventas del mes',r.salesMonth??0],['Ingresos por ventas',money(a.revenue)],['Margen promedio',Number.isFinite(a.margin)?a.margin.toFixed(1)+' %':'Sin datos'],['Autos en stock',a.stockCount??cars.filter(c=>!c.sold).length],['Cuentas por cobrar',money(r.receivable)],['Cuentas por pagar',money(r.debt)]];
- return '<section class="oc-metrics oc-six">'+metrics.map(([k,v])=>'<article><p>'+k+'</p><strong>'+v+'</strong></article>').join('')+'</section><p>Historia desde '+esc(a.start||'el primer registro')+(a.companyStartKnown?'':' · primer dato disponible; fecha de creación por definir')+'. Los importes sin confirmar no se presentan como saldos reales.</p><div class="oc-dashboard-grid">'+salesChart(h)+bars('Estado de inventario',Object.entries(a.states||{}))+bars('Rentabilidad · últimos 4 vendidos',(a.lastSold||[]).map(c=>[c.label,c.result]),true)+trend('Flujo de caja mensual',h,[['entries','Ingresos','#36765a'],['exits','Egresos','#a23e38']])+bars('Composición de gastos',Object.entries(a.expenses||{}),true)+bars('Patrimonio actual',[['Caja',r.cash],['Stock propio al costo',r.stock],['Por cobrar',r.receivable],['Préstamos otorgados',r.loanAsset],['Obligaciones',r.debt===null?null:-r.debt],['Patrimonio',r.patrimony]],true)+'</div>'+trend('Saldos bancarios históricos',h,[['balance','Saldo consolidado','#947243']])+'<section class="oc-card"><h2>Resultado por auto</h2>'+table(['Auto','Estado','Días','Compra','Preparación','Venta','Resultado'],cars.map(c=>[esc(car(c.id)),esc(title(c.status)),esc(c.days??'—'),money(c.purchase),money(c.preparation),money(c.sale),money(c.result)]))+'</section>';
+// Costos asignados a un auto, sumados por concepto (lavados, combustible, fotografías, publicaciones…).
+function carExpensesCard(rows){
+ const total=rows.reduce((s,x)=>s+x.total,0),month=rows.reduce((s,x)=>s+x.month,0);
+ return bars('Costos asignados a autos, por concepto',rows.map(x=>[x.name+' · '+x.cars+(x.cars===1?' auto':' autos'),x.total]),true,
+  rows.length?'<p><b>Total asignado a autos: '+money(total)+'</b> · este mes '+money(month)+'</p><details><summary>Ver por concepto</summary>'+table(['Concepto','Autos','Movimientos','Este mes','Total'],rows.map(x=>[esc(x.name),x.cars,x.count,money(x.month),money(x.total)]))+'</details>':'<p>Cuando asignes un costo a un auto en Caja y bancos (lavado, combustible, fotos, publicación) aparecerá sumado aquí.</p>');
 }
-function operational(r,cars){const a=r.dashboard||{},day=r.today||new Date().toISOString().slice(0,10),total=new Date(Number(day.slice(0,4)),Number(day.slice(5,7)),0).getDate();return '<section class="oc-metrics"><article><p>Stock</p><strong>'+(a.stockCount??cars.filter(c=>!c.sold).length)+'</strong></article><article><p>Avance del mes</p><strong>Día '+Number(day.slice(8))+' / '+total+'</strong></article></section><section class="oc-card"><h2>Movimientos sin conciliar</h2>'+table(['Cuenta','Pendientes'],(a.pendingAccounts||[]).map(x=>[esc(x.name),esc(x.count)]))+'</section><section class="oc-card"><h2>Inventario propio</h2>'+table(['Auto','Estado','Ingreso','Días en inventario'],cars.filter(c=>c.modality==='PROPIO'&&!c.sold&&c.status!=='RETIRADO').map(c=>[esc(car(c.id)),esc(title(c.status)),esc(c.entryDate),esc(c.days??'—')]))+'</section>';}
+function management(r,cars){
+ const a=r.dashboard||{},h=a.history||[];
+ const metrics=[['Ventas del mes',r.salesMonth??0],['Ingresos por ventas',money(a.revenue)],['Margen promedio',Number.isFinite(a.margin)?a.margin.toFixed(1)+' %':'Sin datos'],['Autos en stock',a.stockCount??cars.filter(c=>!c.sold).length],['Cuentas por cobrar',money(r.receivable)],['Cuentas por pagar',money(r.debt)]];
+ return '<section class="oc-metrics oc-six">'+metrics.map(([k,v])=>'<article><p>'+k+'</p><strong>'+v+'</strong></article>').join('')+'</section><p>Historia desde '+esc(a.start||'el primer registro')+(a.companyStartKnown?'':' · primer dato disponible; fecha de creación por definir')+'. Los importes sin confirmar no se presentan como saldos reales.</p>'+
+ '<div class="oc-dashboard-grid">'+salesChart(h)+bars('Estado de inventario',Object.entries(a.states||{}))+bars('Rentabilidad · últimos 4 vendidos',(a.lastSold||[]).map(c=>[c.label,c.result]),true)+trend('Flujo de caja mensual',h,[['entries','Ingresos','#36765a'],['exits','Egresos','#a23e38']])+bars('Composición de gastos',Object.entries(a.expenses||{}),true)+carExpensesCard(a.carExpenses||[])+bars('Patrimonio actual',[['Caja',r.cash],['Stock propio al costo',r.stock],['Por cobrar',r.receivable],['Préstamos otorgados',r.loanAsset],['Obligaciones',r.debt===null?null:-r.debt],['Patrimonio',r.patrimony]],true)+'</div>'+
+ trend('Saldos bancarios históricos',h,[['balance','Saldo consolidado','#947243']])+
+ '<section class="oc-card"><h2>Resultado por auto</h2>'+table(['Auto','Estado','Días','Compra','Preparación','Venta','Resultado'],cars.map(c=>[esc(car(c.id)),esc(title(c.status)),esc(c.days??'—'),money(c.purchase),money(c.preparation),money(c.sale),money(c.result)]))+'</section>';
+}
 
-function edit(tab,id){return '<button data-system-edit="'+tab+'" data-record="'+esc(id)+'">Editar</button>';}
-async function refresh(){if(!options.connected)return;state=await options.refresh();root.OCCaja?.updateSources(state);options.onRefresh?.(state);}
-function mount(h){host=h;const start=host.querySelector('#os-start-save');if(start)start.onclick=async()=>{start.disabled=true;try{await options.call('saveCompanyStart',{date:host.querySelector('#os-start').value});await refresh();message='Fecha de inicio guardada.';rerender();}catch(e){message=e.message;rerender();}};host.querySelectorAll('[data-system-new]').forEach(b=>b.onclick=()=>form(b.dataset.systemNew));host.querySelectorAll('[data-system-edit]').forEach(b=>b.onclick=()=>form(b.dataset.systemEdit,b.dataset.record));host.querySelectorAll('[data-balance]').forEach(b=>b.onclick=()=>balance(b.dataset.balance));const sync=host.querySelector('#os-sync');if(sync)sync.onclick=async()=>{if(busy)return;busy=true;sync.disabled=true;try{await options.call('syncClaxo');await refresh();message='Inventario actualizado desde Claxo.';rerender();}catch(e){message=e.message;rerender();}finally{busy=false;}};}
+// ---------- Autos y operación ----------
+function operations(st,cars){
+ return '<section class="oc-card"><h2>Autos y operación</h2><p>Registra el auto, completa su ficha y véndelo. Lavados, arreglos, fotos y otros costos se asignan al auto desde Caja y bancos: no hace falta crear una actividad.</p><div class="oc-system-actions">'+button('VEHICULOS','Registrar auto')+button('AUTOS_OPERACION','Completar ficha')+'<button id="os-sell">Vender auto</button>'+(options.canManage?'<button id="os-sync">Actualizar stock de Claxo</button>':'')+'</div><p>Última sincronización: '+esc(st.sync||'Pendiente')+'</p>'+
+ table(['Auto','Estado','Días en stock / estacionamiento','Costos registrados','Venta / cobrado','Resultado',''],cars.map(c=>[esc(car(c.id)),esc(title(c.status)),esc((c.days??'—')+' / '+c.parkingDays),money(c.cost),money(c.sale)+' / '+money(c.income),money(c.result),'<button data-system-edit="AUTOS_OPERACION" data-record="'+esc(c.id)+'">Editar ficha</button>']))+'</section>';
+}
+
+// ---------- Compromisos no caja: solo cobros/pagos y préstamos (los costos fijos salen de la caja) ----------
+function commitments(r){
+ return '<section class="oc-metrics"><article><p>Por cobrar</p><strong>'+money(r.receivable)+'</strong></article><article><p>Por pagar (deudas y servicios)</p><strong>'+money(r.debt)+'</strong></article></section>'+
+ '<section class="oc-card"><h2>Compromisos no caja</h2><p>Cuotas de ventas, servicios a plazo y deudas que todavía no pasan por el banco. Se descuentan al vincular el cobro o pago en Caja y bancos; crearlos aquí no mueve dinero.</p><div class="oc-system-actions">'+button('PROYECCIONES','Crear compromiso de cobro o pago')+button('PRESTAMOS','Agregar préstamo')+'</div></section>'+
+ '<section class="oc-card"><h2>Ingresos y pagos esperados</h2>'+table(['Fecha','Concepto','Tipo','Pendiente',''],(r.forecasts||[]).map(x=>[esc(x.fecha),esc(x.descripcion),esc(title(x.tipo)),money(x.pending),edit('PROYECCIONES',x.proyeccion_id)]))+'</section>'+
+ '<section class="oc-card"><h2>Préstamos</h2>'+table(['Nombre','Tipo','Principal pendiente',''],(r.loans||[]).map(x=>[esc(x.nombre),esc(title(x.sentido)),money(x.balance),edit('PRESTAMOS',x.prestamo_id)]))+'</section>';
+}
+
+// ---------- Configuración ----------
+function reconText(x){
+ if(x.status==='OK')return chip('Cuadra con '+(x.reference==='REAL'?'el saldo real':'la cartola'),'ok');
+ if(x.status==='DESCUADRE')return chip('Falta un flujo · '+(x.diff>0?'entrada':'salida')+' de '+money(Math.abs(x.diff)),'bad')+(x.firstBreak?'<br><small>Entre '+esc(x.firstBreak.from)+' y '+esc(x.firstBreak.to)+'</small>':'');
+ if(x.status==='SIN_SALDO')return '<small>Falta saldo inicial</small>';
+ return '<small>Sin cartola con saldo. Usa «Cuadrar» con el saldo real del banco.</small>';
+}
+function settings(st,r){
+ const rec=Object.fromEntries((r.reconciliation||[]).map(x=>[x.id,x]));
+ return '<section class="oc-card"><h2>Configuración del sistema</h2><p>Los usuarios y permisos se administran en la hoja USUARIOS de Google. Supabase se utiliza únicamente para iniciar sesión.</p><h3>Inicio de la historia</h3><input id="os-start" type="date" value="'+esc(r.dashboard?.start||'2025-10-01')+'"><button id="os-start-save">Guardar fecha de inicio</button><h3>Saldos de apertura por cuenta</h3><p>Saldo al cierre del día indicado. El sistema suma movimientos posteriores y avisa si el saldo no cuadra con los flujos: significa que falta un flujo (o que el saldo o la fecha están mal).</p>'+
+ (r.warnings&&r.warnings.length?'<div class="oc-warn"><b>No cuadra:</b><ul>'+r.warnings.map(w=>'<li>'+esc(w)+'</li>').join('')+'</ul></div>':'')+
+ table(['Cuenta','Saldo inicial','Fecha de corte','Saldo calculado hoy','Cuadre',''],(st.accounts||[]).map(a=>{const x=rec[a.cuenta_id]||{};return [esc(a.nombre),a.saldo_inicial===''?'Por completar':money(Number(a.saldo_inicial)),esc(a.fecha_saldo_inicial),x.computed===null||x.computed===undefined?'—':money(x.computed),reconText(x),'<button data-balance="'+esc(a.cuenta_id)+'">Editar saldo</button> <button data-reconcile="'+esc(a.cuenta_id)+'">Cuadrar</button>'];}))+'</section>';
+}
+
 function rerender(){const c=host.querySelector('#oc-content');if(c)c.innerHTML=markup(view);mount(host);}
+const flash=(text)=>{message=text;rerender();};
 function dialog(body){const d=document.createElement('dialog');d.className='oc-dialog';d.innerHTML=body;document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();return d;}
-function input([name,label,type],value){let control='';if(type==='auto'||type==='auto-optional')control='<select name="'+name+'">'+(type==='auto-optional'?'<option value="">Sin auto</option>':'<option value="">Selecciona un auto</option>')+(state.inventory||[]).map(v=>'<option value="'+esc(v.vehiculo_id)+'" '+(value===v.vehiculo_id?'selected':'')+'>'+esc(car(v.vehiculo_id))+'</option>').join('')+'</select>';else if(Array.isArray(type))control='<select name="'+name+'">'+type.map(v=>'<option '+(value===v?'selected':'')+' value="'+v+'">'+esc(title(v))+'</option>').join('')+'</select>';else control='<input name="'+name+'" type="'+type+'" '+(type==='number'?'min="0" step="1"':'')+' value="'+esc(value??'')+'">';return '<label>'+label+control+'</label>';}
-function form(tab,id){const def=defs[tab],existing=(state[def.data]||[]).find(r=>r[def.key]===id)||{},d=dialog('<form><h2>'+def.title+'</h2><div class="oc-caja-form">'+def.fields.map(f=>input(f,existing[f[0]]??(f[0]===def.key?id:''))).join('')+'</div><p role="status"></p><button type="submit">Guardar</button> <button type="button" data-cancel>Cancelar</button></form>');const requestId=crypto.randomUUID();d.querySelector('[data-cancel]').onclick=()=>d.close();d.querySelector('form').onsubmit=async e=>{e.preventDefault();const button=d.querySelector('[type=submit]');button.disabled=true;try{const record={...existing,...Object.fromEntries(new FormData(e.target))};await options.call('saveSystem',{table:tab,record,requestId,expectedVersion:Number(existing.version||0)});await refresh();d.close();message='Registro guardado en Google.';rerender();}catch(e){d.querySelector('[role=status]').textContent=e.message;}finally{button.disabled=false;}};}
-function balance(id){const a=state.accounts.find(x=>x.cuenta_id===id),d=dialog('<form><h2>'+esc(a.nombre)+'</h2><label>Saldo al cierre del día<input name="balance" type="number" step="1" required value="'+esc(a.saldo_inicial)+'"></label><label>Fecha de corte<input name="date" type="date" required value="'+esc(a.fecha_saldo_inicial)+'"></label><p role="status"></p><button>Guardar saldo</button> <button type="button" data-cancel>Cancelar</button></form>');d.querySelector('[data-cancel]').onclick=()=>d.close();d.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),b=e.target.querySelector('button');b.disabled=true;try{await options.call('saveBalance',{id,balance:Number(f.get('balance')),date:f.get('date'),expectedVersion:Number(a.version)});await refresh();d.close();rerender();}catch(e){d.querySelector('[role=status]').textContent=e.message;}finally{b.disabled=false;}};}
-root.OCSistema={setup,markup,mount,refresh};
+function input([name,label,type],value){
+ let control='';
+ if(type==='auto'||type==='auto-optional')control='<select name="'+name+'">'+(type==='auto-optional'?'<option value="">Sin auto</option>':'<option value="">Selecciona un auto</option>')+(S().inventory||[]).map(v=>'<option value="'+esc(v.vehiculo_id)+'" '+(value===v.vehiculo_id?'selected':'')+'>'+esc(car(v.vehiculo_id))+'</option>').join('')+'</select>';
+ else if(Array.isArray(type))control='<select name="'+name+'">'+type.map(v=>'<option '+(value===v?'selected':'')+' value="'+v+'">'+esc(title(v))+'</option>').join('')+'</select>';
+ else control='<input name="'+name+'" type="'+type+'" '+(type==='number'?'min="0" step="1"':'')+' value="'+esc(value??'')+'">';
+ return '<label>'+label+control+'</label>';
+}
+
+function form(tab,id){
+ const def=defs[tab],find=key=>(S()[def.data]||[]).find(r=>r[def.key]===key)||{},existing=find(id);
+ const d=dialog('<form><h2>'+def.title+'</h2><div class="oc-caja-form">'+def.fields.map(f=>input(f,existing[f[0]]??(f[0]===def.key?id:''))).join('')+'</div><p role="status"></p><button type="submit">Guardar</button> <button type="button" data-cancel>Cancelar</button></form>');
+ const requestId=crypto.randomUUID(),pick=d.querySelector('[name="'+def.key+'"]');
+ d.querySelector('[data-cancel]').onclick=()=>d.close();
+ // Al elegir otro auto en «Completar ficha», se cargan los datos de su ficha.
+ if(pick&&pick.tagName==='SELECT')pick.onchange=()=>{const rec=find(pick.value);def.fields.forEach(([name])=>{const el=d.querySelector('[name="'+name+'"]');if(el&&name!==def.key)el.value=rec[name]??(el.tagName==='SELECT'?el.options[0].value:'');});};
+ d.querySelector('form').onsubmit=async e=>{
+  e.preventDefault();const button=d.querySelector('[type=submit]');button.disabled=true;
+  try{
+   const f=Object.fromEntries(new FormData(e.target)),current=find(f[def.key]||id);
+   await options.store.save(tab,{...current,...f},requestId,Number(current.version||0));
+   root.OCCaja?.updateSources(S());d.close();flash('Registro guardado en Google.');
+  }catch(err){d.querySelector('[role=status]').textContent=err.message;}finally{button.disabled=false;}
+ };
+}
+// Vender auto: completa fecha y precio en la ficha y la pasa a VENDIDO.
+function sell(){
+ const ops=S().operations||[],open=(S().inventory||[]).filter(v=>{const o=ops.find(x=>x.vehiculo_id===v.vehiculo_id);return !o||!['VENDIDO','RETIRADO'].includes(o.estado_auto);});
+ const d=dialog('<form><h2>Vender auto</h2><div class="oc-caja-form"><label>Auto<select name="vehiculo_id"><option value="">Selecciona un auto</option>'+open.map(v=>'<option value="'+esc(v.vehiculo_id)+'">'+esc(car(v.vehiculo_id))+'</option>').join('')+'</select></label><label>Fecha de venta<input name="fecha_venta" type="date" required value="'+esc(today())+'"></label><label>Precio de venta<input name="precio_venta" type="number" min="1" step="1" required></label><label>Comisión (solo consignados)<input name="comision_consignacion" type="number" min="0" step="1"></label></div><p role="status"></p><button type="submit">Registrar venta</button> <button type="button" data-cancel>Cancelar</button></form>');
+ const requestId=crypto.randomUUID();d.querySelector('[data-cancel]').onclick=()=>d.close();
+ d.querySelector('form').onsubmit=async e=>{
+  e.preventDefault();const button=d.querySelector('[type=submit]'),status=d.querySelector('[role=status]');button.disabled=true;
+  try{
+   const f=Object.fromEntries(new FormData(e.target)),current=ops.find(x=>x.vehiculo_id===f.vehiculo_id);
+   if(!f.vehiculo_id)throw Error('Selecciona un auto.');
+   if(!current||!current.modalidad||!current.fecha_ingreso)throw Error('Primero completa la ficha del auto (modalidad e ingreso) con «Completar ficha».');
+   const record={...current,fecha_venta:f.fecha_venta,precio_venta:Number(f.precio_venta),estado_auto:'VENDIDO'};
+   if(current.modalidad==='CONSIGNADO'){if(f.comision_consignacion==='')throw Error('Indica la comisión de la consignación.');record.comision_consignacion=Number(f.comision_consignacion);}
+   await options.store.save('AUTOS_OPERACION',record,requestId,Number(current.version||0));
+   root.OCCaja?.updateSources(S());d.close();flash('Venta registrada.');
+  }catch(err){status.textContent=err.message;}finally{button.disabled=false;}
+ };
+}
+function reconSummary(x){
+ if(x.status==='SIN_SALDO')return 'Ingresa saldo y fecha de corte.';
+ if(x.status==='SIN_REFERENCIA')return 'Saldo calculado hoy: '+money(x.computed)+'. No hay una cartola con saldo para comprobarlo; usa «Cuadrar» con el saldo real del banco.';
+ if(x.status==='OK')return '✓ Cuadra con '+(x.reference==='REAL'?'el saldo real':'la cartola')+'. Saldo calculado: '+money(x.computed)+'.';
+ const parts=['⚠ No cuadra: falta '+(x.diff>0?'una ENTRADA':'una SALIDA')+' por '+money(Math.abs(x.diff))+'.'];
+ if(x.firstBreak)parts.push('El quiebre aparece entre '+x.firstBreak.from+' y '+x.firstBreak.to+'.');
+ if(x.unconfirmed.count)parts.push(x.unconfirmed.count+' movimiento(s) sin importe, dirección o fecha confirmados quedan fuera del saldo.');
+ if(x.candidates.length)parts.push('Podría ser: '+x.candidates.map(c=>c.description+' '+c.date+' '+money(c.amount)).join('; ')+'.');
+ return parts.join(' ');
+}
+function balance(id){
+ const a=S().accounts.find(x=>x.cuenta_id===id),moves=S().raw.movements;
+ const d=dialog('<form><h2>'+esc(a.nombre)+'</h2><label>Saldo al cierre del día<input name="balance" type="number" step="1" required value="'+esc(a.saldo_inicial)+'"></label><label>Fecha de corte<input name="date" type="date" required value="'+esc(a.fecha_saldo_inicial)+'"></label><p id="os-check" role="status"></p><p role="alert"></p><button>Guardar saldo</button> <button type="button" data-cancel>Cancelar</button></form>');
+ const form_=d.querySelector('form'),check=d.querySelector('#os-check'),hypo=()=>({...a,saldo_inicial:form_.balance.value===''?'':Number(form_.balance.value),fecha_saldo_inicial:form_.date.value});
+ const live=()=>{const x=root.OCSystemCore.reconcileAccount(hypo(),moves,today());check.textContent=reconSummary(x);check.className=x.status==='DESCUADRE'?'oc-msg-warn':x.status==='OK'?'oc-ok':'';};
+ form_.balance.oninput=live;form_.date.oninput=live;live();
+ d.querySelector('[data-cancel]').onclick=()=>d.close();
+ form_.onsubmit=async e=>{
+  e.preventDefault();const f=new FormData(e.target),b=e.target.querySelector('button');b.disabled=true;
+  try{
+   await options.store.saveBalance(id,Number(f.get('balance')),f.get('date'),Number(a.version));
+   const x=root.OCSystemCore.reconcile(S().raw,today()).find(r=>r.id===id);d.close();
+   flash(x&&x.status==='DESCUADRE'?'⚠ Saldo guardado, pero '+a.nombre+' no cuadra con los flujos. '+reconSummary(x).replace('⚠ ',''):'Saldo guardado.');
+  }catch(err){d.querySelector('[role=alert]').textContent=err.message;}finally{b.disabled=false;}
+ };
+}
+// Cuadrar: compara el saldo calculado con el saldo real que ve el usuario en el banco.
+function reconcileDialog(id){
+ const a=S().accounts.find(x=>x.cuenta_id===id),moves=S().raw.movements,base=root.OCSystemCore.reconcileAccount(a,moves,today());
+ const d=dialog('<form method="dialog"><h2>Cuadrar '+esc(a.nombre)+'</h2><p>Saldo calculado hoy por el sistema: <b>'+money(base.computed)+'</b></p><label>Saldo real hoy en el banco<input name="real" type="number" step="1" required></label><p id="os-check" role="status"></p><button type="button" data-cancel>Cerrar</button></form>');
+ const real=d.querySelector('[name=real]'),out=d.querySelector('#os-check');
+ real.oninput=()=>{if(real.value===''){out.textContent='';return;}const x=root.OCSystemCore.reconcileAccount(a,moves,today(),Number(real.value));out.textContent=reconSummary(x);out.className=x.status==='DESCUADRE'?'oc-msg-warn':'oc-ok';};
+ d.querySelector('[data-cancel]').onclick=()=>d.close();
+}
+
+function mount(h){
+ host=h;
+ const start=host.querySelector('#os-start-save');
+ if(start)start.onclick=async()=>{start.disabled=true;try{await options.store.saveStart(host.querySelector('#os-start').value);flash('Fecha de inicio guardada.');}catch(e){flash(e.message);}};
+ host.querySelectorAll('[data-system-new]').forEach(b=>b.onclick=()=>form(b.dataset.systemNew));
+ host.querySelectorAll('[data-system-edit]').forEach(b=>b.onclick=()=>form(b.dataset.systemEdit,b.dataset.record));
+ host.querySelectorAll('[data-balance]').forEach(b=>b.onclick=()=>balance(b.dataset.balance));
+ host.querySelectorAll('[data-reconcile]').forEach(b=>b.onclick=()=>reconcileDialog(b.dataset.reconcile));
+ const sellButton=host.querySelector('#os-sell');if(sellButton)sellButton.onclick=sell;
+ const sync=host.querySelector('#os-sync');
+ if(sync)sync.onclick=async()=>{if(busy)return;busy=true;sync.disabled=true;try{await options.store.syncClaxo();root.OCCaja?.updateSources(S());busy=false;flash('Inventario actualizado desde Claxo.');}catch(e){busy=false;flash(e.message);}};
+ if(view==='gestion'&&root.OCFinanzas){const st=S();root.OCFinanzas.mount(host,st.raw,st.report,today());}
+}
+root.OCSistema={setup,markup,mount};
 })(window);

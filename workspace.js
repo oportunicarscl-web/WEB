@@ -1,10 +1,10 @@
 (function (root) {
   'use strict';
   const areas = [
-    {id:'compromisos',name:'Compromisos no caja',hint:'Cobros y pagos pendientes',tables:['PROYECCIONES','PRESTAMOS']},
     {id:'finanzas',name:'Caja y bancos',hint:'Movimientos y clasificación',tables:['MOVIMIENTOS_BANCARIOS','CONCEPTOS_CAJA']},
-    {id:'operaciones',name:'Autos y operación',hint:'Ingreso, preparación, venta y resultado',tables:['VEHICULOS','AUTOS_OPERACION','ACTIVIDADES_AUTOS']},
-    {id:'gestion',name:'Finanzas y patrimonio',hint:'Costos fijos, proyecciones y stock propio',tables:['COSTOS_FIJOS','PROYECCIONES','PRESTAMOS','APORTES_CAPITAL_SOCIOS']},
+    {id:'operaciones',name:'Autos y operación',hint:'Registrar auto, completar ficha, vender y mantener el stock de Claxo',tables:['VEHICULOS','AUTOS_OPERACION','ACTIVIDADES_AUTOS']},
+    {id:'gestion',name:'Finanzas y patrimonio',hint:'Rendimiento del capital, proyecciones y tamaño óptimo de flota',tables:['APORTES_CAPITAL_SOCIOS']},
+    {id:'compromisos',name:'Compromisos no caja',hint:'Cobros, pagos y préstamos',tables:['PROYECCIONES','PRESTAMOS']},
     {id:'analitica',name:'Gerencia',hint:'Resultados consolidados',tables:[]},
     {id:'parametros',name:'Configuración',hint:'Cuentas, usuarios y conceptos',tables:['USUARIOS','CUENTAS_FINANCIERAS','PERFILES_IMPORTACION']}
   ];
@@ -52,8 +52,8 @@
   function navigate(next) {
     if (!['operacional','gerencial','pendiente'].includes(next)&&!canAccess(role,next)) return;
     if(next==='gerencial'&&!['gerencial','administrador','finanzas'].includes(role))return;
+    // Las vistas se dibujan con los datos ya cargados: navegar no consulta a Google.
     view=next;table='';query='';render();
-    root.OCSistema?.refresh().then(()=>render()).catch(()=>{});
   }
   function render() {
     const name=session.profile?.name || session.user.app_metadata?.oc_username || session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuario';

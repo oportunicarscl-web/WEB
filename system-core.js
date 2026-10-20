@@ -40,10 +40,11 @@ function reports(d,today){
  const cash=accountRows.some(a=>a.balance===null)||!accountRows.length?null:accountRows.reduce((s,a)=>s+a.balance,0);
  const stock=cars.some(c=>!c.sold&&c.status!=='RETIRADO'&&(c.modality==='POR_DEFINIR'||c.modality==='PROPIO'&&c.cost===null))?null:cars.filter(c=>!c.sold&&c.status!=='RETIRADO'&&c.modality==='PROPIO').reduce((s,c)=>s+(c.cost||0),0);
  const loanDebt=loans.filter(l=>l.sentido==='RECIBIDO').reduce((s,l)=>s+(l.balance||0),0),loanAsset=loans.filter(l=>l.sentido==='OTORGADO').reduce((s,l)=>s+(l.balance||0),0);
- const fixed=d.fixed.filter(active).filter(f=>f.habilitado==='SI').reduce((s,f)=>s+(n(f.monto_mensual)||0),0);
+ const fixed=fixedFromCaja(confirmed,today);
  const month=today.slice(0,7),monthMoves=confirmed.filter(m=>String(m.fecha_operacion).slice(0,7)===month);
  const dashboard=analytics(d,today,cars,confirmed,accountRows);
- return {dashboard,today,accounts:accountRows,cars,forecasts:pending,loans,cash,stock,receivable,debt:obligations+loanDebt,loanAsset,patrimony:issues.length?null:cash+stock+receivable+loanAsset-obligations-loanDebt,issues,fixedMonthly:fixed,projectedIncome:pending.filter(f=>f.direccion==='ENTRADA'&&String(f.fecha).slice(0,7)===month).reduce((s,f)=>s+f.pending,0),salesMonth:ops.filter(o=>o.estado_auto==='VENDIDO'&&String(o.fecha_venta).slice(0,7)===month).length,entries:monthMoves.filter(m=>m.direccion==='ENTRADA'&&m.naturaleza!=='TRANSFERENCIA').reduce((s,m)=>s+Number(m.monto),0),exits:monthMoves.filter(m=>m.direccion==='SALIDA'&&m.naturaleza!=='TRANSFERENCIA').reduce((s,m)=>s+Number(m.monto),0),unclassified:moves.filter(m=>!m.concepto_id).length};
+ const reconciliation=reconcile(d,today),warnings=reconciliation.filter(x=>x.status==='DESCUADRE').map(x=>x.name+': falta un flujo por '+Math.abs(x.diff)+' ('+(x.diff>0?'entrada':'salida')+').');
+ return {dashboard,today,reconciliation,warnings,accounts:accountRows,cars,forecasts:pending,loans,cash,stock,receivable,debt:obligations+loanDebt,loanAsset,patrimony:issues.length?null:cash+stock+receivable+loanAsset-obligations-loanDebt,issues,fixedMonthly:fixed,projectedIncome:pending.filter(f=>f.direccion==='ENTRADA'&&String(f.fecha).slice(0,7)===month).reduce((s,f)=>s+f.pending,0),salesMonth:ops.filter(o=>o.estado_auto==='VENDIDO'&&String(o.fecha_venta).slice(0,7)===month).length,entries:monthMoves.filter(m=>m.direccion==='ENTRADA'&&m.naturaleza!=='TRANSFERENCIA').reduce((s,m)=>s+Number(m.monto),0),exits:monthMoves.filter(m=>m.direccion==='SALIDA'&&m.naturaleza!=='TRANSFERENCIA').reduce((s,m)=>s+Number(m.monto),0),unclassified:moves.filter(m=>!m.concepto_id).length};
 }
 function analytics(d,today,cars,confirmed,accounts){
  const dates=[...(d.movements||[]).map(m=>m.fecha_operacion),...cars.map(c=>c.entryDate)].filter(date).filter(x=>x<=today).sort();
@@ -54,7 +55,48 @@ function analytics(d,today,cars,confirmed,accounts){
  const margins=current.map(c=>c.result!==null&&c.sale>0?c.result/c.sale*100:null);
  const expenses={};confirmed.filter(m=>m.direccion==='SALIDA'&&m.naturaleza==='GASTO').forEach(m=>{const k=m.categoria||'Sin categoría';expenses[k]=(expenses[k]||0)+Number(m.monto);});
  const states={};cars.filter(c=>!c.sold&&c.status!=='RETIRADO').forEach(c=>{const k=c.modality==='CONSIGNADO'?'CONSIGNADO':c.status;states[k]=(states[k]||0)+1;});
- return {start,companyStartKnown:!!date(d.companyStart),history,stockCount:cars.filter(c=>!c.sold&&c.status!=='RETIRADO').length,revenue:current.some(c=>c.sale===null)?null:current.reduce((s,c)=>s+c.sale,0),margin:!margins.length||margins.some(x=>x===null)?null:margins.reduce((s,x)=>s+x,0)/margins.length,lastSold:sold.slice(0,4),expenses,states,pendingAccounts:d.accounts.map(a=>({name:a.nombre,count:d.movements.filter(m=>active(m)&&m.cuenta_id===a.cuenta_id&&(!m.concepto_id||m.estado_clasificacion==='POR_ASIGNAR_AUTO')).length}))};
+ return {start,companyStartKnown:!!date(d.companyStart),history,stockCount:cars.filter(c=>!c.sold&&c.status!=='RETIRADO').length,revenue:current.some(c=>c.sale===null)?null:current.reduce((s,c)=>s+c.sale,0),margin:!margins.length||margins.some(x=>x===null)?null:margins.reduce((s,x)=>s+x,0)/margins.length,lastSold:sold.slice(0,4),expenses,states,carExpenses:carExpenses(confirmed,today),pendingAccounts:d.accounts.map(a=>{const own=d.movements.filter(m=>active(m)&&m.cuenta_id===a.cuenta_id),noConcept=own.filter(m=>!m.concepto_id).length,carPending=own.filter(m=>m.concepto_id&&m.estado_clasificacion==='POR_ASIGNAR_AUTO').length;return {name:a.nombre,count:noConcept+carPending,noConcept,carPending};})};
 }
-const api={reports,paid,date,number:n};if(typeof module!=='undefined')module.exports=api;root.OCSystemCore=api;
+const signed=m=>(m.direccion==='ENTRADA'?1:-1)*Number(m.monto);
+const monthOf=v=>String(v).slice(0,7);
+// Costos fijos = lo que la caja ya clasificó como costo FIJO. Promedio de hasta 3 meses cerrados; si no hay, el mes en curso.
+function fixedFromCaja(confirmed,today){
+ const month=monthOf(today),by={};
+ confirmed.filter(m=>m.direccion==='SALIDA'&&m.tipo_costo==='FIJO'&&m.naturaleza!=='TRANSFERENCIA').forEach(m=>{const k=monthOf(m.fecha_operacion);by[k]=(by[k]||0)+Number(m.monto);});
+ const closed=Object.keys(by).filter(k=>k<month).sort().slice(-3);
+ return closed.length?Math.round(closed.reduce((s,k)=>s+by[k],0)/closed.length):(by[month]||0);
+}
+// Costos asignados a un auto (lavado, combustible, fotos, publicación, arreglos…) sumados por concepto. Compra y venta no entran.
+function carExpenses(confirmed,today){
+ const month=monthOf(today),by={};
+ confirmed.filter(m=>m.direccion==='SALIDA'&&m.vehiculo_id&&m.operacion_auto&&!['COMPRA','VENTA'].includes(m.operacion_auto)).forEach(m=>{
+  const k=m.concepto_nombre||'Sin concepto',e=by[k]||(by[k]={name:k,total:0,month:0,count:0,cars:new Set()});
+  e.total+=Number(m.monto);e.count++;e.cars.add(m.vehiculo_id);if(monthOf(m.fecha_operacion)===month)e.month+=Number(m.monto);
+ });
+ return Object.values(by).map(e=>({name:e.name,total:e.total,month:e.month,count:e.count,cars:e.cars.size})).sort((a,b)=>b.total-a.total);
+}
+// Cuadre: compara el saldo calculado con una referencia independiente (saldo real ingresado o saldo_cartola).
+// diff > 0: el banco tiene más que el sistema (falta una ENTRADA). diff < 0: falta una SALIDA.
+function reconcileAccount(a,movements,today,real){
+ const out={id:a.cuenta_id,name:a.nombre,opening:n(a.saldo_inicial),cut:date(a.fecha_saldo_inicial),computed:null,diff:null,status:'SIN_SALDO',unconfirmed:{count:0,sum:0},candidates:[],firstBreak:null,reference:null};
+ if(out.opening===null||!out.cut)return out;
+ const own=movements.filter(m=>m.cuenta_id===a.cuenta_id&&active(m)),ok=own.filter(paid).filter(m=>date(m.fecha_operacion)&&m.fecha_operacion>out.cut&&m.fecha_operacion<=today);
+ const open=own.filter(m=>!paid(m)||!date(m.fecha_operacion));
+ out.unconfirmed={count:open.length,sum:open.reduce((s,m)=>s+(['ENTRADA','SALIDA'].includes(m.direccion)&&n(m.monto)!==null?signed(m):0),0)};
+ out.computed=out.opening+ok.reduce((s,m)=>s+signed(m),0);
+ out.status='SIN_REFERENCIA';
+ const finish=()=>{out.status=out.diff===0?'OK':'DESCUADRE';if(out.diff)out.candidates=open.filter(m=>n(m.monto)!==null&&Number(m.monto)===Math.abs(out.diff)).map(m=>({id:m.movimiento_id,description:m.descripcion||'',amount:Number(m.monto),date:m.fecha_operacion||''}));};
+ if(n(real)!==null){out.reference='REAL';out.diff=Number(real)-out.computed;finish();return out;}
+ const stmt=ok.filter(m=>n(m.saldo_cartola)!==null);
+ if(stmt.length){
+  const days=[...new Set(stmt.map(m=>m.fecha_operacion))].sort();let prev=0,found=null,last=0;
+  days.forEach(day=>{const expected=out.opening+ok.filter(m=>m.fecha_operacion<=day).reduce((s,m)=>s+signed(m),0);
+   const gaps=stmt.filter(m=>m.fecha_operacion===day).map(m=>Number(m.saldo_cartola)-expected),gap=gaps.reduce((b,x)=>Math.abs(x)<Math.abs(b)?x:b,gaps[0]);
+   if(!found&&gap!==prev)found={from:days[days.indexOf(day)-1]||out.cut,to:day,amount:gap-prev};prev=gap;last=gap;});
+  out.reference='CARTOLA';out.diff=last;out.firstBreak=found;finish();
+ }
+ return out;
+}
+function reconcile(d,today,real){real=real||{};return d.accounts.filter(active).map(a=>reconcileAccount(a,d.movements,today,real[a.cuenta_id]));}
+const api={reports,paid,date,number:n,active,signed,reconcile,reconcileAccount,fixedFromCaja,carExpenses};if(typeof module!=='undefined')module.exports=api;root.OCSystemCore=api;
 })(typeof globalThis==='undefined'?this:globalThis);

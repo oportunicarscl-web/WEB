@@ -5,7 +5,7 @@
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Oportunicars · Acceso</title>
-<link rel="stylesheet" href="workspace.css?v=20261019-gastos">
+<link rel="stylesheet" href="workspace.css?v=20261020-rapido">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -309,7 +309,7 @@
 <div class="titleblock">Plano 01 · Motor rotativo · Esc. 1:1</div>
 
 <script src="schema.js"></script>
-<script src="caja.js?v=20261019-gastos"></script><script src="google-config.js"></script><script src="google-caja.js?v=20261019-gastos"></script><script src="sistema.js?v=20261019-gastos"></script><script src="workspace.js?v=20261019-gastos"></script>
+<script src="caja.js?v=20261020-rapido"></script><script src="google-config.js"></script><script src="system-core.js?v=20261020-rapido"></script><script src="finanzas.js?v=20261020-rapido"></script><script src="google-caja.js?v=20261020-rapido"></script><script src="sistema.js?v=20261020-rapido"></script><script src="workspace.js?v=20261020-rapido"></script>
 <script>
 (() => {
   // La identidad se verifica con Supabase; no hay claves de usuarios en el frontend.
@@ -614,11 +614,11 @@
       const name = user.user_metadata?.full_name || user.user_metadata?.name ||
         user.email?.split('@')[0] || 'usuario';
       const workspaceRevision = revision;
+      // Una sola consulta a Google, en paralelo con la animación. Después todo se lee de memoria.
+      const loading = window.OCGoogleCaja.connect(client,user).catch(error => ({connectionError:error.message}));
       await startEngine(String(name).slice(0, 100));
       if (activeId === user.id && workspaceRevision === revision && !recovering) {
-        let connected;
-        try { connected = await window.OCGoogleCaja.connect(client,user); }
-        catch(error) { connected = {connectionError:error.message}; }
+        const connected = await loading;
         if(activeId===user.id&&workspaceRevision===revision&&!recovering)
           window.OCWorkspace.open({ user, signOut, ...connected });
       }
