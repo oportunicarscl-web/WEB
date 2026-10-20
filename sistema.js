@@ -27,10 +27,23 @@ const carFin=id=>((S().report||{}).cars||[]).find(c=>c.id===id)||null;
 const pct=v=>v===null||v===undefined?'—':(Math.round(v*10)/10).toLocaleString('es-CL')+'%';
 const tone=v=>v===null||v===undefined?'':v>=0?' class="oc-ok"':' class="oc-bad"';
 // Resumen del auto con lo que ya está asignado en Caja y bancos.
+const fmtDay=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v.slice(8,10)+'-'+v.slice(5,7)+'-'+v.slice(0,4):'Sin fecha';
+const lineRows=ls=>'<ul class="oc-lines">'+ls.map(l=>'<li><span>'+esc(fmtDay(l.date))+'</span><span>'+esc(l.text)+(l.concept?' <small>· '+esc(l.concept)+'</small>':'')+(l.confirmed?'':' <small class="oc-bad">por confirmar</small>')+'</span><b>'+money(l.amount)+'</b></li>').join('')+'</ul>';
+// Fila desplegable: clic para ver los movimientos de caja que la componen.
+const fold=(label,total,ls,extra)=>'<details class="oc-fold"><summary><span>'+label+'</span><b>'+total+'</b></summary>'+(ls.length?lineRows(ls):'<p class="oc-bad">Todavía no hay movimientos asignados.</p>')+(extra||'')+'</details>';
+// Resumen del auto con lo que ya está asignado en Caja y bancos; cada línea se abre para ver el detalle.
 function finPanel(id){
  const c=carFin(id);if(!id||!c)return '<p>Elige un auto para ver lo asignado en Caja y bancos.</p>';
- const cons=c.modality==='CONSIGNADO',res=c.sale!==null&&c.purchase!==null?c.sale-c.purchase-c.preparation:null;
- return '<table class="oc-fin"><tbody><tr><td>'+(cons?'Pago al dueño (concepto Compra)':'Compra')+'</td><td>'+(c.purchase===null?'<span class="oc-bad">Falta asignar</span>':money(c.purchase))+'</td></tr><tr><td>Arreglos y costos del auto</td><td>'+money(c.preparation)+'</td></tr><tr><td>Venta cobrada</td><td>'+(c.income>0?money(c.income):'<span class="oc-bad">Falta asignar</span>')+'</td></tr><tr><td><b>'+(cons?'Margen (comisión)':'Margen')+'</b></td><td><b'+tone(res)+'>'+(res===null?'—':money(res)+' · '+pct(c.sale>0?res/c.sale*100:null))+'</b></td></tr></tbody></table><small>Todo viene de la caja asignada a este auto. Para cambiarlo, edita el movimiento en Caja y bancos.</small>';
+ const cons=c.modality==='CONSIGNADO',ls=c.lines||[],res=c.sale!==null&&c.purchase!==null?c.sale-c.purchase-c.preparation:null;
+ const buy=ls.filter(l=>l.op==='COMPRA'&&l.dir==='SALIDA'),sale=ls.filter(l=>l.op==='VENTA'&&l.dir==='ENTRADA'),costs=ls.filter(l=>l.dir==='SALIDA'&&l.op!=='COMPRA'&&l.op!=='VENTA');
+ const groups={};costs.forEach(l=>{(groups[l.concept||'Sin concepto']=groups[l.concept||'Sin concepto']||[]).push(l);});
+ const costBody=Object.keys(groups).sort((a,b)=>groups[b].reduce((s,l)=>s+l.amount,0)-groups[a].reduce((s,l)=>s+l.amount,0)).map(k=>fold(esc(k),money(groups[k].reduce((s,l)=>s+l.amount,0)),groups[k])).join('');
+ return '<div class="oc-fin">'+
+  fold(cons?'Pago al dueño (concepto Compra)':'Compra',c.purchase===null?'<span class="oc-bad">Falta asignar</span>':money(c.purchase),buy)+
+  '<details class="oc-fold"><summary><span>Arreglos y costos del auto</span><b>'+money(c.preparation)+'</b></summary>'+(costBody||'<p class="oc-bad">Todavía no hay costos asignados.</p>')+'</details>'+
+  fold('Venta cobrada',c.income>0?money(c.income):'<span class="oc-bad">Falta asignar</span>',sale)+
+  '<div class="oc-fold-total"><span>'+(cons?'Margen (comisión)':'Margen')+'</span><b'+tone(res)+'>'+(res===null?'—':money(res)+' · '+pct(c.sale>0?res/c.sale*100:null))+'</b></div></div>'+
+  '<small>Fecha de ingreso: '+esc(c.entryDate?fmtDay(c.entryDate)+(c.entryInferred?' (primera compra)':''):'sin dato')+' · Día de venta: '+esc(c.saleDateCaja?fmtDay(c.saleDateCaja)+' (último cobro)':'sin cobro')+' · Días en inventario: '+esc(c.days??'—')+'.</small><br><small>Todo viene de la caja asignada a este auto. Para cambiarlo, edita el movimiento en Caja y bancos.</small>';
 }
 function markup(v){
  view=v;

@@ -33,3 +33,13 @@ test('Costos asignados a un auto cuentan aunque el importe siga por confirmar, s
  const r=core.reports(d,'2026-10-18'),c=r.cars[0];
  assert.equal(c.preparation,80);assert.equal(c.unconfirmed,1);assert.equal(c.hasFicha,false);assert.equal(r.cash,0);
 });
+
+test('Día de venta = último cobro de venta en caja; ingreso inferido de la primera compra; días de inventario', () => {
+ const mv=o=>movement({vehiculo_id:'v',...o});
+ const d=data();d.accounts[0].saldo_inicial=0;d.operations=[{vehiculo_id:'v',modalidad:'PROPIO',estado_auto:'VENDIDO',fecha_venta:'2026-10-30',precio_venta:1}];
+ d.movements=[mv({monto:100,operacion_auto:'COMPRA',fecha_operacion:'2026-09-01'}),mv({monto:30,direccion:'ENTRADA',naturaleza:'INGRESO',operacion_auto:'VENTA',fecha_operacion:'2026-09-20'}),mv({monto:70,direccion:'ENTRADA',naturaleza:'INGRESO',operacion_auto:'VENTA',fecha_operacion:'2026-10-11'})];
+ const c=core.reports(d,'2026-10-18').cars[0];
+ assert.equal(c.saleDate,'2026-10-11');assert.equal(c.entryDate,'2026-09-01');assert.equal(c.entryInferred,true);assert.equal(c.days,40);
+ assert.equal(c.lines.filter(l=>l.op==='VENTA').length,2);
+ d.operations[0].fecha_ingreso='2026-09-05';assert.equal(core.reports(d,'2026-10-18').cars[0].days,36);
+});

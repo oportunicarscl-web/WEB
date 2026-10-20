@@ -23,15 +23,18 @@ function reports(d,today){
   const saleDateCaja=saleMoves.map(m=>m.fecha_operacion).sort().pop()||'';
   const sold=o.estado_auto==='VENDIDO',sale=income>0?income:n(o.precio_venta),own=o.modalidad==='PROPIO';
   const cost=own&&purchase!==null?purchase+preparation:null;
-  const saleDate=sold&&date(o.fecha_venta)?o.fecha_venta:(saleDateCaja||o.fecha_venta||'');
+  // Día de venta = último día que entró dinero por la venta (caja). Ingreso = ficha o, si falta, la primera compra asignada.
+  const saleDate=saleDateCaja||(date(o.fecha_venta)?o.fecha_venta:'');
+  const firstPurchase=purchases.map(m=>m.fecha_operacion).filter(date).sort()[0]||'';
+  const entryDate=date(o.fecha_ingreso)?o.fecha_ingreso:firstPurchase,entryInferred=!date(o.fecha_ingreso)&&!!firstPurchase;
   const end=sold&&date(saleDate)?saleDate:today;
-  const days=date(o.fecha_ingreso)?Math.max(0,Math.floor((Date.parse(end)-Date.parse(o.fecha_ingreso))/86400000)):null;
+  const days=date(entryDate)?Math.max(0,Math.floor((Date.parse(end)-Date.parse(entryDate))/86400000)):null;
   // Margen = venta cobrada − compra (o pago al dueño) − costos. En consignados ese margen es la comisión, aunque no se cobre explícita.
   const result=sold&&sale!==null&&purchase!==null?sale-purchase-preparation:null;
   const margin=result!==null&&sale>0?result/sale*100:null;
   const salePending=!sold&&income>0&&o.estado_auto!=='RETIRADO';
-  const unconfirmed=ms.filter(m=>!paid(m)).length;
-  return {id:v.vehiculo_id,unconfirmed,hasFicha:!!o.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:o.estado_auto||'POR_REVISAR',modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate:o.fecha_ingreso||'',saleDate,activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,cost,sale,income,sold,result,margin,commission:o.modalidad==='CONSIGNADO'?result:null,salePending,saleDateCaja};
+  const unconfirmed=ms.filter(m=>!paid(m)).length,lines=ms.map(m=>({id:m.movimiento_id,date:date(m.fecha_operacion)||'',text:String(m.descripcion||m.referencia||'Movimiento'),amount:Number(m.monto),dir:m.direccion,op:m.operacion_auto||'',concept:m.concepto_nombre||'',confirmed:paid(m)})).sort((a,b)=>a.date.localeCompare(b.date));
+  return {id:v.vehiculo_id,lines,unconfirmed,hasFicha:!!o.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:o.estado_auto||'POR_REVISAR',modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate,entryInferred,saleDate,activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,cost,sale,income,sold,result,margin,commission:o.modalidad==='CONSIGNADO'?result:null,salePending,saleDateCaja};
  });
  const pending=d.forecasts.filter(active).map(f=>{
   const settled=confirmed.filter(m=>m.proyeccion_id===f.proyeccion_id&&m.direccion===f.direccion).reduce((s,m)=>s+Number(m.monto),0);
