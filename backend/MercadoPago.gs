@@ -58,7 +58,8 @@ function completarFechasMercadoPago(){
   responses.forEach((res,i)=>{
    if(res.getResponseCode()!==200){failed++;return;}
    const p=JSON.parse(res.getContentText()),iso=p.date_approved||p.date_created,day=osMpDay_(iso);if(!day){failed++;return;}
-   const patch={fecha_operacion:day,fecha_original:iso,updated_at:now,updated_by:'SISTEMA_MP',version:Number(batch[i].version||1)+1},dir=osMpDirection_(p,me);
+   const patch={fecha_operacion:day,version:Number(batch[i].version||1)+1},dir=osMpDirection_(p,me);
+   [['fecha_original',iso],['updated_at',now],['updated_by','SISTEMA_MP']].forEach(x=>{if(t.headers.indexOf(x[0])>=0)patch[x[0]]=x[1];});
    if(!batch[i].direccion&&dir){patch.direccion=dir;directions++;}
    ocPatchRow_(t,batch[i]._row,patch);updated++;
   });

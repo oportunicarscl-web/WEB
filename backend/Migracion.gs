@@ -52,7 +52,6 @@ function actualizarReportesSistema(){
 function activarActualizacionesSistema(){activarSincronizacionClaxo();if(!ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='actualizarReportesSistema'))ScriptApp.newTrigger('actualizarReportesSistema').timeBased().everyHours(1).create();return {claxo:'cada 6 horas',reportes:'cada hora'};}
 
 function finalizarYVerificarSistema(){
- actualizarValidacionesSistema();
  console.log(JSON.stringify({estructura:revisarEstructuraCaja(),conteos:comprobarConexionCaja(),migracion:PropertiesService.getScriptProperties().getProperty('OS_MIGRATION_VERSION')}));
  console.log(JSON.stringify({stock:sincronizarStockClaxo()}));
  console.log(JSON.stringify({reportes:actualizarReportesSistema()}));
@@ -63,8 +62,3 @@ function diagnosticarValidacionesStock(){
  console.log(JSON.stringify(t.sheet.getRange(2,1,1,t.headers.length).getDataValidations()[0].map((v,i)=>({campo:t.headers[i],criterio:v?String(v.getCriteriaType()):'',valores:v?v.getCriteriaValues().map(x=>String(x)):[]}))));
 }
 
-function actualizarValidacionesSistema(){
- // Imported Excel validations still point at the removed DEMO identifiers.
- // Relationships are checked by the authenticated API; audit actor IDs are text.
- Object.keys(OS_BOOKS).forEach(k=>{const b=SpreadsheetApp.openById(OS_BOOKS[k].id);OS_BOOKS[k].keep.forEach(name=>{const s=b.getSheetByName(name);if(!s||s.getLastColumn()===0)return;const headers=s.getRange(1,1,1,s.getLastColumn()).getValues()[0],rules=s.getRange(2,1,1,headers.length).getDataValidations()[0];rules.forEach((rule,i)=>{if(rule&&String(rule.getCriteriaType())==='VALUE_IN_LIST'&&JSON.stringify(rule.getCriteriaValues()).includes('DEMO-')){const col=s.getRange(2,i+1).getA1Notation();s.getRange(2,i+1,s.getMaxRows()-1,1).setDataValidation(SpreadsheetApp.newDataValidation().requireFormulaSatisfied('=OR('+col+'="",ISTEXT('+col+'))').setAllowInvalid(false).setHelpText('Identificador de producción; referencia verificada por el sistema.').build());}});});});
-}

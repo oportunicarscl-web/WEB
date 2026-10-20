@@ -9,10 +9,10 @@
     {id:'parametros',name:'Configuración',hint:'Cuentas, usuarios y conceptos',tables:['USUARIOS','CUENTAS_FINANCIERAS','PERFILES_IMPORTACION']}
   ];
   const roles = {
-    operativo:{label:'Operaciones',home:'operacional',areas:['finanzas','operaciones','analitica','compromisos']},
-    gerencial:{label:'Gerencia',home:'gerencial',areas:areas.map(a=>a.id)},
-    administrador:{label:'Administración',home:'gerencial',areas:areas.map(a=>a.id)},
-    finanzas:{label:'Finanzas',home:'gerencial',areas:['finanzas','gestion','analitica','parametros']}
+    operativo:{label:'Operaciones',home:'finanzas',areas:['finanzas','operaciones','analitica','compromisos']},
+    gerencial:{label:'Gerencia',home:'finanzas',areas:areas.map(a=>a.id)},
+    administrador:{label:'Administración',home:'finanzas',areas:areas.map(a=>a.id)},
+    finanzas:{label:'Finanzas',home:'finanzas',areas:['finanzas','gestion','analitica','parametros']}
   };
   const assignments = Object.freeze({jt:'operativo',mmusa:'operativo',alex:'gerencial',gonzalo:'gerencial'});
   function resolveRole(user) {
@@ -49,7 +49,10 @@
     document.body.append(host);document.body.classList.add('workspace-open');
     render();
   }
+  // Por ahora solo Caja y bancos y Autos y operación están activas; el resto se ve en el menú pero no carga ni cambia la vista.
+  const active=['finanzas','operaciones'];
   function navigate(next) {
+    if(!active.includes(next))return;
     if (!['operacional','gerencial','pendiente'].includes(next)&&!canAccess(role,next)) return;
     if(next==='gerencial'&&!['gerencial','administrador','finanzas'].includes(role))return;
     // Las vistas se dibujan con los datos ya cargados: navegar no consulta a Google.
@@ -62,7 +65,7 @@
     host.replaceChildren(node(`
       <aside class="oc-sidebar"><a class="oc-brand" href="#" aria-label="Inicio Oportunicars"><b>oportuni<span>cars</span></b><small>GESTIÓN DEL NEGOCIO</small></a>
       <div class="oc-profile"><span class="oc-avatar">${esc(String(name).slice(0,2).toUpperCase())}</span><div><strong>${esc(name)}</strong><small>${role?roles[role].label:'Perfil por asignar'}</small></div></div>
-      <nav aria-label="Áreas">${role?'<p class="oc-nav-label">TU ESPACIO</p>'+nav(roles[role].home,'Resumen')+(['gerencial','administrador'].includes(role)?nav('operacional','Seguimiento operacional'):'')+
+      <nav aria-label="Áreas">${role?'<p class="oc-nav-label">TU ESPACIO</p>'+nav(['gerencial','administrador','finanzas'].includes(role)?'gerencial':'operacional','Resumen')+(['gerencial','administrador'].includes(role)?nav('operacional','Seguimiento operacional'):'')+
       '<p class="oc-nav-label">ÁREAS DE TRABAJO</p>'+areas.filter(a=>canAccess(role,a.id)).map(a=>nav(a.id,a.name)).join(''):''}</nav>
       <div class="oc-sidebar-bottom"><small>${preview?'VISTA PREVIA · SIN SESIÓN REAL':'Oportunicars · Sistema de Gestión'}</small><button id="oc-signout">Cerrar sesión</button></div></aside>
       <main class="oc-main"><header class="oc-header"><div><p class="oc-eyebrow">OPORTUNICARS / ${role?roles[role].label.toUpperCase():'ACCESO'}</p><h1 tabindex="-1">${title}</h1></div><span class="oc-status">${session.caja?.connected?'Google conectado':'Conexión de datos pendiente'}</span></header>
@@ -81,7 +84,7 @@
     root.OCSistema?.mount(host);
 
   }
-  function nav(id,text){return `<button data-nav="${id}" class="oc-nav ${view===id?'active':''}" ${view===id?'aria-current="page"':''}>${text}<span>↗</span></button>`;}
+  function nav(id,text){const on=active.includes(id);return `<button data-nav="${id}" class="oc-nav ${view===id?'active':''}${on?'':' oc-nav-soon'}" ${view===id?'aria-current="page"':''}${on?'':' aria-disabled="true" tabindex="-1" title="Disponible próximamente"'}>${text}<span>${on?'↗':''}</span></button>`;}
   function pending(){if(session.connectionError)return '<section class="oc-empty"><h2>Conexión con Google pendiente</h2><p>'+esc(session.connectionError)+'</p><p>Tu sesión de acceso está verificada.</p></section>';return '<section class="oc-empty"><span class="oc-empty-icon">○</span><h2>Tu cuenta está verificada</h2><p>Falta que el administrador asigne tu perfil de trabajo. Una vez asignado, entra nuevamente para ver tu resumen y tus áreas.</p><p>No necesitas crear otra cuenta.</p></section>';}
   function summary(){return root.OCSistema?root.OCSistema.markup(view==='gerencial'?'analitica':'resumen'):pending();}
   function moduleView(){

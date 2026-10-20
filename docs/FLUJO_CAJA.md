@@ -31,7 +31,7 @@ Las columnas estándar monto_confirmado, estado_fuente y direccion se respetan a
 
 La web todavía no lee ni guarda en Google. Se requiere autorizar y desplegar el backend de Apps Script, validar la sesión Supabase y resolver el rol desde USUARIOS de Google. La implementación anterior de roles vía app_metadata no es la arquitectura final acordada. Supabase se limita a autenticación.
 
-El backend debe validar cuenta, actor, versión, estado y monto; deduplicar por cuenta y origen; bloquear escrituras concurrentes; persistir lote, movimiento, asignaciones y auditoría; permitir asignaciones parciales/agrupadas sin exceder el importe; y conservar el documento de respaldo. No usar la interfaz como barrera de seguridad. Las validaciones importadas de Sheets aún conservan referencias DEMO y necesitan actualizarse; no se han certificado las protecciones nativas. Los campos de responsable y saldo inicial pendientes no se inventaron.
+El backend debe validar cuenta, actor, versión, estado y monto; deduplicar por cuenta y origen; bloquear escrituras concurrentes; persistir lote, movimiento, asignaciones y auditoría; permitir asignaciones parciales/agrupadas sin exceder el importe; y conservar el documento de respaldo. No usar la interfaz como barrera de seguridad. Las validaciones importadas de Sheets aún conservan referencias de prueba antiguas y necesitan actualizarse; no se han certificado las protecciones nativas. Los campos de responsable y saldo inicial pendientes no se inventaron.
 
 ## Dependencia y comprobaciones
 
