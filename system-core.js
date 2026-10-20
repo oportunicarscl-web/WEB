@@ -12,14 +12,21 @@ function reports(d,today){
  });
  const cars=d.inventory.filter(active).map(v=>{
   const o=ops.find(x=>x.vehiculo_id===v.vehiculo_id)||{},ms=confirmed.filter(m=>m.vehiculo_id===v.vehiculo_id),as=activities.filter(a=>a.vehiculo_id===v.vehiculo_id);
-  const purchases=ms.filter(m=>m.operacion_auto==='COMPRA'),purchase=purchases.length?Math.max(n(o.costo_compra)||0,purchases.reduce((s,m)=>s+Number(m.monto),0)):n(o.costo_compra);
-  const preparation=ms.filter(m=>m.naturaleza==='COSTO'&&m.operacion_auto!=='COMPRA').reduce((s,m)=>s+Number(m.monto),0)+as.reduce((s,a)=>s+Math.max(0,(n(a.costo)||0)-ms.filter(m=>m.actividad_id===a.actividad_id&&m.naturaleza==='COSTO'&&m.operacion_auto!=='COMPRA').reduce((sum,m)=>sum+Number(m.monto),0)),0);
-  const sold=o.estado_auto==='VENDIDO',sale=n(o.precio_venta),commission=n(o.comision_consignacion),own=o.modalidad==='PROPIO';
+  // Todo sale de la caja asignada al auto: compra (o pago al dueño en consignados), costos y cobros de venta.
+  const purchases=ms.filter(m=>m.operacion_auto==='COMPRA'&&m.direccion==='SALIDA'),purchase=purchases.length?purchases.reduce((s,m)=>s+Number(m.monto),0):n(o.costo_compra);
+  const preparation=ms.filter(m=>m.naturaleza==='COSTO'&&m.operacion_auto!=='COMPRA'&&m.operacion_auto!=='VENTA').reduce((s,m)=>s+Number(m.monto),0)+as.reduce((s,a)=>s+Math.max(0,(n(a.costo)||0)-ms.filter(m=>m.actividad_id===a.actividad_id&&m.naturaleza==='COSTO'&&m.operacion_auto!=='COMPRA').reduce((sum,m)=>sum+Number(m.monto),0)),0);
+  const saleMoves=ms.filter(m=>m.operacion_auto==='VENTA'&&m.direccion==='ENTRADA'),income=saleMoves.reduce((s,m)=>s+Number(m.monto),0);
+  const saleDateCaja=saleMoves.map(m=>m.fecha_operacion).sort().pop()||'';
+  const sold=o.estado_auto==='VENDIDO',sale=income>0?income:n(o.precio_venta),own=o.modalidad==='PROPIO';
   const cost=own&&purchase!==null?purchase+preparation:null;
-  const end=sold&&date(o.fecha_venta)?o.fecha_venta:today;
+  const saleDate=sold&&date(o.fecha_venta)?o.fecha_venta:(saleDateCaja||o.fecha_venta||'');
+  const end=sold&&date(saleDate)?saleDate:today;
   const days=date(o.fecha_ingreso)?Math.max(0,Math.floor((Date.parse(end)-Date.parse(o.fecha_ingreso))/86400000)):null;
-  const income=ms.filter(m=>m.operacion_auto==='VENTA'&&m.direccion==='ENTRADA').reduce((s,m)=>s+Number(m.monto),0);
-  return {id:v.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:o.estado_auto||'POR_REVISAR',modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate:o.fecha_ingreso||'',saleDate:o.fecha_venta||'',activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,cost,sale,income,sold,result:sold?(own?(sale!==null&&cost!==null?sale-cost:null):(o.modalidad==='CONSIGNADO'&&commission!==null?commission-preparation:null)):null};
+  // Margen = venta cobrada − compra (o pago al dueño) − costos. En consignados ese margen es la comisión, aunque no se cobre explícita.
+  const result=sold&&sale!==null&&purchase!==null?sale-purchase-preparation:null;
+  const margin=result!==null&&sale>0?result/sale*100:null;
+  const salePending=!sold&&income>0&&o.estado_auto!=='RETIRADO';
+  return {id:v.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:o.estado_auto||'POR_REVISAR',modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate:o.fecha_ingreso||'',saleDate,activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,cost,sale,income,sold,result,margin,commission:o.modalidad==='CONSIGNADO'?result:null,salePending,saleDateCaja};
  });
  const pending=d.forecasts.filter(active).map(f=>{
   const settled=confirmed.filter(m=>m.proyeccion_id===f.proyeccion_id&&m.direccion===f.direccion).reduce((s,m)=>s+Number(m.monto),0);

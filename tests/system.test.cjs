@@ -15,3 +15,14 @@ test('Stock desconocido se muestra incompleto, no como cero',()=>{const d=data()
 test('Estacionamiento calculado: fecha de venta congela días e ignora días manuales',()=>{const d=data();d.activities=[{vehiculo_id:'v',tipo:'ESTACIONAMIENTO',dias:999}];d.operations[0].estado_auto='VENDIDO';d.operations[0].fecha_venta='2026-10-11';d.operations[0].precio_venta=150;const r=core.reports(d,'2026-10-19');assert.equal(r.cars[0].parkingDays,10);assert.equal(r.dashboard.lastSold[0].result,50);});
 test('Servicio a plazo afecta deuda pero no caja; pago parcial reduce compromiso',()=>{const d=data();d.forecasts=[{proyeccion_id:'s',direccion:'SALIDA',tipo:'SERVICIO_30_DIAS',monto:300}];let r=core.reports(d,'2026-10-19');assert.equal(r.cash,1000);assert.equal(r.debt,300);d.movements=[movement({proyeccion_id:'s',monto:100})];r=core.reports(d,'2026-10-19');assert.equal(r.cash,900);assert.equal(r.debt,200);});
 test('Historia no inventa saldos anteriores al corte y no cuenta transferencias como ingreso',()=>{const d=data();d.companyStart='2026-08-01';d.movements=[movement({naturaleza:'TRANSFERENCIA',direccion:'ENTRADA'})];const r=core.reports(d,'2026-10-19');assert.equal(r.dashboard.history.length,3);assert.equal(r.dashboard.history[0].balance,null);assert.equal(r.dashboard.history[2].entries,0);assert.equal(r.dashboard.history[2].balance,1050);});
+
+test('Margen del auto sale de la caja: venta − compra − costos, también en consignados', () => {
+ const mv=(o)=>movement({monto_confirmado:'SI',incluir_en_saldo:'SI',vehiculo_id:'v',...o});
+ const d=data();d.accounts[0].saldo_inicial=0;d.operations=[{vehiculo_id:'v',modalidad:'PROPIO',fecha_ingreso:'2026-10-01',estado_auto:'VENDIDO',fecha_venta:'2026-10-10',precio_venta:1}];
+ d.movements=[mv({monto:10000,operacion_auto:'COMPRA'}),mv({monto:500,operacion_auto:'ARREGLO'}),mv({monto:100,operacion_auto:'COSTO_AUTO'}),mv({monto:14000,direccion:'ENTRADA',naturaleza:'INGRESO',operacion_auto:'VENTA',fecha_operacion:'2026-10-12'})];
+ let c=core.reports(d,'2026-10-18').cars[0];
+ assert.equal(c.purchase,10000);assert.equal(c.preparation,600);assert.equal(c.sale,14000);assert.equal(c.result,3400);assert.equal(Math.round(c.margin),24);
+ d.operations[0].modalidad='CONSIGNADO';c=core.reports(d,'2026-10-18').cars[0];assert.equal(c.commission,3400);
+ d.movements=d.movements.filter(m=>m.operacion_auto!=='COMPRA');d.operations[0].costo_compra='';c=core.reports(d,'2026-10-18').cars[0];assert.equal(c.result,null);
+ d.operations[0].estado_auto='DISPONIBLE';c=core.reports(d,'2026-10-18').cars[0];assert.equal(c.salePending,true);assert.equal(c.saleDateCaja,'2026-10-12');
+});
