@@ -3,15 +3,19 @@
 const n=v=>v!==''&&v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v):null;
 const date=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&!isNaN(Date.parse(v))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v?v:null;
 const paid=m=>m.monto_confirmado==='SI'&&m.incluir_en_saldo==='SI'&&['ENTRADA','SALIDA'].includes(m.direccion)&&n(m.monto)!==null&&Number(m.monto)>=0;
+// Dirección efectiva: la registrada o, si falta, la que implica el concepto asignado (costo/gasto = salida, ingreso = entrada).
+const dirOf=m=>['ENTRADA','SALIDA'].includes(m.direccion)?m.direccion:(['COSTO','GASTO'].includes(m.naturaleza)?'SALIDA':m.naturaleza==='INGRESO'?'ENTRADA':'');
+// Movimiento utilizable para costos y márgenes por auto aunque su importe siga «por confirmar» (los saldos de cuenta sí exigen confirmación).
+const usable=m=>n(m.monto)!==null&&Number(m.monto)>=0&&dirOf(m)!=='';
 const active=r=>r.estado_registro!=='ANULADO'&&(!r.ambiente||r.ambiente==='PRODUCCION');
 function reports(d,today){
- const moves=d.movements.filter(active),confirmed=moves.filter(paid).filter(m=>date(m.fecha_operacion)&&m.fecha_operacion<=today),activities=d.activities.filter(active),ops=d.operations.filter(active);
+ const moves=d.movements.filter(active),confirmed=moves.filter(paid).filter(m=>date(m.fecha_operacion)&&m.fecha_operacion<=today),counted=moves.filter(usable).filter(m=>!date(m.fecha_operacion)||m.fecha_operacion<=today).map(m=>({...m,direccion:dirOf(m)})),activities=d.activities.filter(active),ops=d.operations.filter(active);
  const accountRows=d.accounts.filter(active).map(a=>{
   const opening=n(a.saldo_inicial),cut=date(a.fecha_saldo_inicial),rows=confirmed.filter(m=>m.cuenta_id===a.cuenta_id&&date(m.fecha_operacion)&&cut&&m.fecha_operacion>cut&&m.fecha_operacion<=today);
   return {id:a.cuenta_id,name:a.nombre,balance:opening===null||!cut?null:opening+rows.reduce((s,m)=>s+(m.direccion==='ENTRADA'?1:-1)*Number(m.monto),0)};
  });
  const cars=d.inventory.filter(active).map(v=>{
-  const o=ops.find(x=>x.vehiculo_id===v.vehiculo_id)||{},ms=confirmed.filter(m=>m.vehiculo_id===v.vehiculo_id),as=activities.filter(a=>a.vehiculo_id===v.vehiculo_id);
+  const o=ops.find(x=>x.vehiculo_id===v.vehiculo_id)||{},ms=counted.filter(m=>m.vehiculo_id===v.vehiculo_id),as=activities.filter(a=>a.vehiculo_id===v.vehiculo_id);
   // Todo sale de la caja asignada al auto: compra (o pago al dueño en consignados), costos y cobros de venta.
   const purchases=ms.filter(m=>m.operacion_auto==='COMPRA'&&m.direccion==='SALIDA'),purchase=purchases.length?purchases.reduce((s,m)=>s+Number(m.monto),0):n(o.costo_compra);
   const preparation=ms.filter(m=>m.naturaleza==='COSTO'&&m.operacion_auto!=='COMPRA'&&m.operacion_auto!=='VENTA').reduce((s,m)=>s+Number(m.monto),0)+as.reduce((s,a)=>s+Math.max(0,(n(a.costo)||0)-ms.filter(m=>m.actividad_id===a.actividad_id&&m.naturaleza==='COSTO'&&m.operacion_auto!=='COMPRA').reduce((sum,m)=>sum+Number(m.monto),0)),0);
@@ -26,7 +30,8 @@ function reports(d,today){
   const result=sold&&sale!==null&&purchase!==null?sale-purchase-preparation:null;
   const margin=result!==null&&sale>0?result/sale*100:null;
   const salePending=!sold&&income>0&&o.estado_auto!=='RETIRADO';
-  return {id:v.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:o.estado_auto||'POR_REVISAR',modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate:o.fecha_ingreso||'',saleDate,activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,cost,sale,income,sold,result,margin,commission:o.modalidad==='CONSIGNADO'?result:null,salePending,saleDateCaja};
+  const unconfirmed=ms.filter(m=>!paid(m)).length;
+  return {id:v.vehiculo_id,unconfirmed,hasFicha:!!o.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:o.estado_auto||'POR_REVISAR',modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate:o.fecha_ingreso||'',saleDate,activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,cost,sale,income,sold,result,margin,commission:o.modalidad==='CONSIGNADO'?result:null,salePending,saleDateCaja};
  });
  const pending=d.forecasts.filter(active).map(f=>{
   const settled=confirmed.filter(m=>m.proyeccion_id===f.proyeccion_id&&m.direccion===f.direccion).reduce((s,m)=>s+Number(m.monto),0);
@@ -49,11 +54,11 @@ function reports(d,today){
  const loanDebt=loans.filter(l=>l.sentido==='RECIBIDO').reduce((s,l)=>s+(l.balance||0),0),loanAsset=loans.filter(l=>l.sentido==='OTORGADO').reduce((s,l)=>s+(l.balance||0),0);
  const fixed=fixedFromCaja(confirmed,today);
  const month=today.slice(0,7),monthMoves=confirmed.filter(m=>String(m.fecha_operacion).slice(0,7)===month);
- const dashboard=analytics(d,today,cars,confirmed,accountRows);
+ const dashboard=analytics(d,today,cars,confirmed,accountRows,counted);
  const reconciliation=reconcile(d,today),warnings=reconciliation.filter(x=>x.status==='DESCUADRE').map(x=>x.name+': falta un flujo por '+Math.abs(x.diff)+' ('+(x.diff>0?'entrada':'salida')+').');
  return {dashboard,today,reconciliation,warnings,accounts:accountRows,cars,forecasts:pending,loans,cash,stock,receivable,debt:obligations+loanDebt,loanAsset,patrimony:issues.length?null:cash+stock+receivable+loanAsset-obligations-loanDebt,issues,fixedMonthly:fixed,projectedIncome:pending.filter(f=>f.direccion==='ENTRADA'&&String(f.fecha).slice(0,7)===month).reduce((s,f)=>s+f.pending,0),salesMonth:ops.filter(o=>o.estado_auto==='VENDIDO'&&String(o.fecha_venta).slice(0,7)===month).length,entries:monthMoves.filter(m=>m.direccion==='ENTRADA'&&m.naturaleza!=='TRANSFERENCIA').reduce((s,m)=>s+Number(m.monto),0),exits:monthMoves.filter(m=>m.direccion==='SALIDA'&&m.naturaleza!=='TRANSFERENCIA').reduce((s,m)=>s+Number(m.monto),0),unclassified:moves.filter(m=>!m.concepto_id).length};
 }
-function analytics(d,today,cars,confirmed,accounts){
+function analytics(d,today,cars,confirmed,accounts,counted){
  const dates=[...(d.movements||[]).map(m=>m.fecha_operacion),...cars.map(c=>c.entryDate)].filter(date).filter(x=>x<=today).sort();
  const start=date(d.companyStart)||dates[0]||today;
  const months=[];for(let y=Number(start.slice(0,4)),m=Number(start.slice(5,7));y*12+m<=Number(today.slice(0,4))*12+Number(today.slice(5,7));m++){if(m>12){m=1;y++;}if(months.length>1200)break;months.push(y+'-'+String(m).padStart(2,'0'));}
@@ -62,7 +67,7 @@ function analytics(d,today,cars,confirmed,accounts){
  const margins=current.map(c=>c.result!==null&&c.sale>0?c.result/c.sale*100:null);
  const expenses={};confirmed.filter(m=>m.direccion==='SALIDA'&&m.naturaleza==='GASTO').forEach(m=>{const k=m.categoria||'Sin categoría';expenses[k]=(expenses[k]||0)+Number(m.monto);});
  const states={};cars.filter(c=>!c.sold&&c.status!=='RETIRADO').forEach(c=>{const k=c.modality==='CONSIGNADO'?'CONSIGNADO':c.status;states[k]=(states[k]||0)+1;});
- return {start,companyStartKnown:!!date(d.companyStart),history,stockCount:cars.filter(c=>!c.sold&&c.status!=='RETIRADO').length,revenue:current.some(c=>c.sale===null)?null:current.reduce((s,c)=>s+c.sale,0),margin:!margins.length||margins.some(x=>x===null)?null:margins.reduce((s,x)=>s+x,0)/margins.length,lastSold:sold.slice(0,4),expenses,states,carExpenses:carExpenses(confirmed,today),pendingAccounts:d.accounts.map(a=>{const own=d.movements.filter(m=>active(m)&&m.cuenta_id===a.cuenta_id),noConcept=own.filter(m=>!m.concepto_id).length,carPending=own.filter(m=>m.concepto_id&&m.estado_clasificacion==='POR_ASIGNAR_AUTO').length;return {name:a.nombre,count:noConcept+carPending,noConcept,carPending};})};
+ return {start,companyStartKnown:!!date(d.companyStart),history,stockCount:cars.filter(c=>!c.sold&&c.status!=='RETIRADO').length,revenue:current.some(c=>c.sale===null)?null:current.reduce((s,c)=>s+c.sale,0),margin:!margins.length||margins.some(x=>x===null)?null:margins.reduce((s,x)=>s+x,0)/margins.length,lastSold:sold.slice(0,4),expenses,states,carExpenses:carExpenses(counted,today),pendingAccounts:d.accounts.map(a=>{const own=d.movements.filter(m=>active(m)&&m.cuenta_id===a.cuenta_id),noConcept=own.filter(m=>!m.concepto_id).length,carPending=own.filter(m=>m.concepto_id&&m.estado_clasificacion==='POR_ASIGNAR_AUTO').length;return {name:a.nombre,count:noConcept+carPending,noConcept,carPending};})};
 }
 const signed=m=>(m.direccion==='ENTRADA'?1:-1)*Number(m.monto);
 const monthOf=v=>String(v).slice(0,7);

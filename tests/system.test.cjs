@@ -26,3 +26,10 @@ test('Margen del auto sale de la caja: venta − compra − costos, también en 
  d.movements=d.movements.filter(m=>m.operacion_auto!=='COMPRA');d.operations[0].costo_compra='';c=core.reports(d,'2026-10-18').cars[0];assert.equal(c.result,null);
  d.operations[0].estado_auto='DISPONIBLE';c=core.reports(d,'2026-10-18').cars[0];assert.equal(c.salePending,true);assert.equal(c.saleDateCaja,'2026-10-12');
 });
+
+test('Costos asignados a un auto cuentan aunque el importe siga por confirmar, sin tocar saldos', () => {
+ const d=data();d.accounts[0].saldo_inicial=0;d.operations=[];
+ d.movements=[{cuenta_id:'a',fecha_operacion:'2026-10-05',monto:80,direccion:'',monto_confirmado:'NO',incluir_en_saldo:'NO',naturaleza:'COSTO',operacion_auto:'ARREGLO',vehiculo_id:'v'}];
+ const r=core.reports(d,'2026-10-18'),c=r.cars[0];
+ assert.equal(c.preparation,80);assert.equal(c.unconfirmed,1);assert.equal(c.hasFicha,false);assert.equal(r.cash,0);
+});

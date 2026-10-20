@@ -71,7 +71,7 @@
       <main class="oc-main"><header class="oc-header"><div><p class="oc-eyebrow">OPORTUNICARS / ${role?roles[role].label.toUpperCase():'ACCESO'}</p><h1 tabindex="-1">${title}</h1></div><span class="oc-status">${session.caja?.connected?'Google conectado':'Conexión de datos pendiente'}</span></header>
       ${preview?'<div class="oc-preview">Vista previa de diseño. Perfil de prueba; sin acceso a cuentas ni datos reales.</div>':''}
       <div id="oc-content">${view==='pendiente'?pending():['operacional','gerencial'].includes(view)?summary():moduleView()}</div>
-      <footer class="oc-footer">Los importes y resultados aparecerán cuando exista una fuente conectada y verificada.</footer></main>
+</main>
     `));
     host.querySelector('.oc-brand').onclick=e=>{e.preventDefault();navigate(role?roles[role].home:'pendiente');};
     host.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>navigate(b.dataset.nav));

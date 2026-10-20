@@ -86,9 +86,29 @@ function management(r,cars){
 }
 
 // ---------- Autos y operación ----------
+// Grupos: stock (con ficha y sin vender), sinficha (sin ficha o por revisar), vendidos.
+const hasMoney=c=>c.preparation>0||c.purchase!==null||c.income>0;
+const carGroup=c=>c.sold?'vendidos':((!c.hasFicha||c.status==='POR_REVISAR')&&!hasMoney(c))?'sinficha':'stock';
+let carTab='stock';
+function carFilters(cars){
+ const n=g=>cars.filter(c=>carGroup(c)===g).length,tab=(id,label,k)=>'<button type="button" class="oc-tab'+(carTab===id?' active':'')+'" data-car-tab="'+id+'">'+label+' ('+k+')</button>';
+ return '<div class="oc-cash-tools">'+tab('stock','En stock',n('stock'))+tab('sinficha','Sin ficha',n('sinficha'))+tab('vendidos','Vendidos',n('vendidos'))+tab('todos','Todos',cars.length)+'<input id="os-car-search" type="search" placeholder="Buscar patente o modelo" aria-label="Buscar auto"></div>';
+}
+function opsTable(cars){
+ const rows=cars.slice().sort((a,b)=>(b.income>0)-(a.income>0)||(b.purchase!==null)-(a.purchase!==null)||b.preparation-a.preparation).map(c=>{
+  const cons=c.modality==='CONSIGNADO',cells=[esc(car(c.id)),esc(title(c.status))+(!c.hasFicha?'<br>'+chip('Falta ficha','bad'):'')+(c.salePending?'<br>'+chip('Cobro de venta: falta marcar vendido','bad'):'')+(c.unconfirmed?'<br><small>'+c.unconfirmed+' importe(s) por confirmar</small>':''),esc(c.days??'—'),(c.purchase===null?(c.sold?'<b class="oc-bad">Falta</b>':'—'):money(c.purchase))+(cons&&c.purchase!==null?'<br><small>pago al dueño</small>':''),c.preparation?money(c.preparation):'—',c.income>0?money(c.income):'—','<b'+tone(c.result)+'>'+(c.result===null?'—':money(c.result))+'</b>',pct(c.margin),(c.salePending?'<button data-os-sell="'+esc(c.id)+'">Marcar vendido</button> ':'')+'<button data-system-edit="AUTOS_OPERACION" data-record="'+esc(c.id)+'">Ficha</button>'];
+  return '<tr data-group="'+carGroup(c)+'" data-text="'+esc(car(c.id).toLowerCase())+'"'+(carTab!=='todos'&&carGroup(c)!==carTab?' hidden':'')+'>'+cells.map(x=>'<td>'+x+'</td>').join('')+'</tr>';
+ }).join('');
+ return '<div class="oc-table-scroll"><table id="os-cars"><thead><tr>'+['Auto','Estado','Días','Compra','Costos','Venta cobrada','Margen','%',''].map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function filterCars(){
+ const q=((host.querySelector('#os-car-search')||{}).value||'').trim().toLowerCase();
+ host.querySelectorAll('#os-cars tbody tr').forEach(tr=>{tr.hidden=!((carTab==='todos'||tr.dataset.group===carTab||q)&&(!q||tr.dataset.text.includes(q)));});
+ host.querySelectorAll('[data-car-tab]').forEach(b=>b.classList.toggle('active',b.dataset.carTab===carTab));
+}
 function operations(st,cars){
- return '<section class="oc-card"><h2>Autos y operación</h2><p>Registra el auto, completa su ficha y márcalo vendido. El margen sale de la caja asignada al auto: compra (o pago al dueño en consignados), arreglos y costos, y venta cobrada. Lavados, arreglos, fotos y otros costos se asignan al auto desde Caja y bancos: no hace falta crear una actividad.</p><div class="oc-system-actions">'+button('VEHICULOS','Registrar auto')+button('AUTOS_OPERACION','Completar ficha')+'<button id="os-sell">Vender auto</button>'+(options.canManage?'<button id="os-sync">Actualizar stock de Claxo</button>':'')+'</div><p>Última sincronización: '+esc(st.sync||'Pendiente')+'</p>'+
- table(['Auto','Estado','Días','Compra','Costos','Venta cobrada','Margen','%',''],cars.map(c=>{const cons=c.modality==='CONSIGNADO';return [esc(car(c.id)),esc(title(c.status))+(c.salePending?'<br>'+chip('Cobro de venta: falta marcar vendido','bad'):''),esc(c.days??'—'),(c.purchase===null?(c.sold?'<b class="oc-bad">Falta</b>':'—'):money(c.purchase))+(cons&&c.purchase!==null?'<br><small>pago al dueño</small>':''),money(c.preparation),c.income>0?money(c.income):'—','<b'+tone(c.result)+'>'+(c.result===null?'—':money(c.result))+'</b>',pct(c.margin),(c.salePending?'<button data-os-sell="'+esc(c.id)+'">Marcar vendido</button> ':'')+'<button data-system-edit="AUTOS_OPERACION" data-record="'+esc(c.id)+'">Ficha</button>'];}))+'</section>';
+ return '<section class="oc-card"><h2>Autos y operación</h2><p>Registra el auto, completa su ficha y márcalo vendido. El margen sale de la caja asignada al auto: compra (o pago al dueño en consignados), arreglos y costos, y venta cobrada. Lavados, arreglos, fotos y otros costos se asignan al auto desde Caja y bancos: no hace falta crear una actividad.</p><div class="oc-system-actions">'+button('VEHICULOS','Registrar auto')+button('AUTOS_OPERACION','Completar ficha')+'<button id="os-sell">Vender auto</button>'+(options.canManage?'<button id="os-sync">Actualizar stock de Claxo</button>':'')+'</div><p>Última sincronización: '+esc(st.sync?new Date(st.sync).toLocaleString('es-CL',{timeZone:'America/Santiago'}):'Pendiente')+'</p>'+
+ carFilters(cars)+opsTable(cars)+'</section>';
 }
 
 // ---------- Compromisos no caja: solo cobros/pagos y préstamos (los costos fijos salen de la caja) ----------
@@ -209,6 +229,7 @@ function mount(h){
  host.querySelectorAll('[data-system-edit]').forEach(b=>b.onclick=()=>form(b.dataset.systemEdit,b.dataset.record));
  host.querySelectorAll('[data-balance]').forEach(b=>b.onclick=()=>balance(b.dataset.balance));
  host.querySelectorAll('[data-reconcile]').forEach(b=>b.onclick=()=>reconcileDialog(b.dataset.reconcile));
+ host.querySelectorAll('[data-car-tab]').forEach(b=>b.onclick=()=>{carTab=b.dataset.carTab;filterCars();});const carSearch=host.querySelector('#os-car-search');if(carSearch)carSearch.oninput=filterCars;
  const sellButton=host.querySelector('#os-sell');if(sellButton)sellButton.onclick=()=>sell();host.querySelectorAll('[data-os-sell]').forEach(b=>b.onclick=()=>sell(b.dataset.osSell));
  const sync=host.querySelector('#os-sync');
  if(sync)sync.onclick=async()=>{if(busy)return;busy=true;sync.disabled=true;try{await options.store.syncClaxo();root.OCCaja?.updateSources(S());busy=false;flash('Inventario actualizado desde Claxo.');}catch(e){busy=false;flash(e.message);}};
