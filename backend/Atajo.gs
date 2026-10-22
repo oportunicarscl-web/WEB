@@ -1,4 +1,4 @@
-// Oportunicars · Atajo de registro rápido, dirección, confirmación de importe y macheo.
+// Oportunicars · Atajo de registro rápido, confirmación de importe y macheo (la dirección ya está en osDirection_).
 // Archivo NUEVO: crear 'Atajo.gs' y pegar todo. Luego, en doPost, antes de throw Error('Acción desconocida.'), agregar:
 //   if(typeof ocExtra_==='function'){const x=ocExtra_(p,current);if(x!==undefined)return ocJson_({ok:true,data:x});}
 // Y en OC_MOV_FIELDS (Carga.gs) agregar: 'estado_importacion','origen','observacion','created_at'.
@@ -6,7 +6,6 @@ const OC_ATAJO_FIELDS=['movimiento_id','cuenta_id','fecha_operacion','monto','di
 
 function ocExtra_(p,actor){
  if(p.action==='quickData')return ocQuickData_();
- if(p.action==='setDirection')return ocSetDirection_(p,actor);
  if(p.action==='confirmAmount')return ocConfirmAmount_(p,actor);
  if(p.action==='quick')return ocQuick_(p,actor);
  if(p.action==='quickMatch')return ocQuickMatch_(p,actor);
@@ -28,12 +27,6 @@ function ocQuickData_(){
   today:ocToday_()
  };
 }
-function ocSetDirection_(p,actor){
- if(['ENTRADA','SALIDA'].indexOf(p.direction)<0)throw Error('Dirección inválida.');
- const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),r=ocMovRow_(t,p.id);
- if(Number(r.version||1)!==p.expectedVersion)throw Error('El movimiento cambió. Recarga antes de guardar.');
- const patch=ocBump_(r,actor,{direccion:p.direction});ocPatchRow_(t,r._row,patch);return {version:patch.version};
-}
 function ocConfirmAmount_(p,actor){
  const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),r=ocMovRow_(t,p.id);
  if(Number(r.version||1)!==p.expectedVersion)throw Error('El movimiento cambió. Recarga antes de guardar.');
@@ -47,24 +40,25 @@ function ocQuickValidate_(p,concept,account,vehicle,today){
  const amount=Number(p.amount);if(!Number.isSafeInteger(amount)||amount<=0||amount>1000000000)throw Error('Ingresa un monto válido.');
  if(['ENTRADA','SALIDA'].indexOf(p.direction)<0)throw Error('Indica si entró o salió dinero.');
  if(!account)throw Error('Cuenta no encontrada.');
- if(!concept)throw Error('Concepto no disponible.');
- if(p.direction==='ENTRADA'&&['GASTO','COSTO'].indexOf(concept.nature)>=0||p.direction==='SALIDA'&&concept.nature==='INGRESO')throw Error('El concepto no corresponde a si entró o salió dinero.');
- if(concept.vehicleOperation&&p.vehicleId&&!vehicle)throw Error('Auto no encontrado.');
+ if(p.conceptId&&!concept)throw Error('Concepto no disponible.');
+ if(concept&&(p.direction==='ENTRADA'&&['GASTO','COSTO'].indexOf(concept.nature)>=0||p.direction==='SALIDA'&&concept.nature==='INGRESO'))throw Error('El concepto no corresponde a si entró o salió dinero.');
+ if(concept&&concept.vehicleOperation&&p.vehicleId&&!vehicle)throw Error('Auto no encontrado.');
  let date=String(p.date||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date>today||date<new Date(Date.parse(today)-60*86400000).toISOString().slice(0,10))date=today;
- return {amount:amount,direction:p.direction,date:date,vehicleId:concept.vehicleOperation?(vehicle?vehicle.id:''):'',note:String(p.note||'').slice(0,120)};
+ return {amount:amount,direction:p.direction,date:date,vehicleId:concept&&concept.vehicleOperation?(vehicle?vehicle.id:''):'',note:String(p.note||'').slice(0,120)};
 }
 function ocQuick_(p,actor){
  const fin=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),maestros='OC_MAESTROS_ID';
  const concepts=ocTable_(maestros,'CONCEPTOS_CAJA').rows.filter(c=>c.concepto_id===p.conceptId&&c.habilitado==='SI');
  const concept=concepts.length===1?ocConcept_(concepts[0]):null;if(concept)ocValidateConcept_(concept);
+ const C=concept||{id:'',name:'',version:'',category:'',nature:'',cost:'',recurring:false,vehicleOperation:''};
  const accounts=ocTable_(maestros,'CUENTAS_FINANCIERAS').rows.filter(a=>a.cuenta_id===p.accountId&&ocProd_(a)),account=accounts.length===1?accounts[0]:null;
  const cars=p.vehicleId?ocTable_(maestros,'VEHICULOS').rows.filter(v=>String(v.vehiculo_id)===String(p.vehicleId)&&ocProd_(v)):[],car=cars.length===1?{id:String(cars[0].vehiculo_id),patente:String(cars[0].patente||'')}:null;
  const q=ocQuickValidate_(p,concept,account,car,ocToday_());
  const id='ATJ-'+osHash_('atajo|'+p.requestId).slice(0,24),existing=fin.rows.filter(r=>r.movimiento_id===id);
  if(existing.length)return ocSlimMov_(existing[0]);
  const cash=ocIsCash_(account),now=new Date().toISOString();
- const row={movimiento_id:id,cuenta_id:String(account.cuenta_id),fecha_operacion:q.date,moneda:'CLP',direccion:q.direction,monto:q.amount,descripcion:[concept.name,car&&car.patente,q.note].filter(Boolean).join(' · '),hash_origen:'ATAJO|'+p.requestId,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'MANUAL',calidad:'CONFIRMADO',version:1,created_at:now,created_by:actor.id,updated_at:now,updated_by:actor.id,
-  monto_confirmado:cash?'SI':'NO',incluir_en_saldo:cash?'SI':'NO',tipo_fuente:'atajo',estado_importacion:'ATAJO',concepto_id:concept.id,concepto_nombre:concept.name,concepto_version:concept.version,categoria:concept.category,naturaleza:concept.nature,tipo_costo:concept.cost,recurrente:concept.recurring?'SI':'NO',operacion_auto:concept.vehicleOperation,vehiculo_id:q.vehicleId,estado_clasificacion:concept.vehicleOperation&&!q.vehicleId?'POR_ASIGNAR_AUTO':'CLASIFICADO'};
+ const row={movimiento_id:id,cuenta_id:String(account.cuenta_id),fecha_operacion:q.date,moneda:'CLP',direccion:q.direction,monto:q.amount,descripcion:[concept?concept.name:'Por asignar',car&&car.patente,q.note].filter(Boolean).join(' · '),hash_origen:'ATAJO|'+p.requestId,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'MANUAL',calidad:'CONFIRMADO',version:1,created_at:now,created_by:actor.id,updated_at:now,updated_by:actor.id,
+  monto_confirmado:cash?'SI':'NO',incluir_en_saldo:cash?'SI':'NO',tipo_fuente:'atajo',estado_importacion:'ATAJO',concepto_id:C.id,concepto_nombre:C.name,concepto_version:C.version,categoria:C.category,naturaleza:C.nature,tipo_costo:C.cost,recurrente:concept?(C.recurring?'SI':'NO'):'',operacion_auto:C.vehicleOperation,vehiculo_id:q.vehicleId,estado_clasificacion:!concept?'PENDIENTE':C.vehicleOperation&&!q.vehicleId?'POR_ASIGNAR_AUTO':'CLASIFICADO'};
  ocPatchRow_(fin,fin.sheet.getLastRow()+1,row);return ocSlimMov_(row);
 }
 // Une un gasto registrado por atajo con el movimiento que llegó del banco o Mercado Pago (misma cuenta, importe y dirección).

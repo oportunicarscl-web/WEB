@@ -38,3 +38,10 @@ El backend debe validar cuenta, actor, versión, estado y monto; deduplicar por 
 SheetJS CE 0.20.3 está incluido localmente en vendor, con licencia Apache 2.0. Fuente oficial: https://docs.sheetjs.com/docs/getting-started/installation/standalone/ y https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js.
 
 Ejecutar `node --test tests/*.test.cjs`. Incluye importación XLSX de prueba, fechas inválidas, importes locales, direcciones, duplicados, ambigüedad y bloqueo de registros provisionales. La vista previa se revisa en Safari; no implica despliegue de producción.
+
+## Caja cuadrada (desde 15-oct-2026) y Caja histórica
+- Cada cuenta parte de un saldo inicial al cierre del 15-oct (Mercado Pago $3.402.265, Caja $5.040.000, resto 0). Se fijan desde el botón «Fijar saldos iniciales».
+- Solo mueven el saldo los movimientos posteriores completos: fecha, ingreso/egreso explícito, importe confirmado, concepto y, si es de auto, el auto. El resto queda en «Por completar».
+- Lo anterior al corte se trabaja en «Caja histórica», sin saldos ni cuadratura. Los márgenes de autos leen ambas.
+- Atajo (`atajo.html`, para dejar en la pantalla de inicio del iPhone): registra un gasto o ingreso. En cuentas de efectivo cuenta al instante; en bancos y Mercado Pago queda «registrado» (gris) y se une solo con el movimiento real de igual cuenta, importe y dirección (hasta 5 días después).
+- Backend: `backend/Atajo.gs` (acciones `quickData`, `quick`, `confirmAmount`, `quickMatch`); engancharlo en doPost antes de «Acción desconocida».

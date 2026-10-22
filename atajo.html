@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Registrar">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#14231b">
+<meta name="robots" content="noindex">
+<title>Registrar movimiento · Oportunicars</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%2314231b'/%3E%3Ctext x='90' y='122' font-size='96' text-anchor='middle' fill='%23f2c14e' font-family='Arial' font-weight='700'%3E$%3C/text%3E%3C/svg%3E">
+<style>
+:root{--bg:#f4f3ee;--ink:#14231b;--mut:#6b7468;--card:#fff;--line:#dcdacf;--acc:#14231b;--acc-ink:#fff;--in:#17794a;--out:#a8321f;--warn:#9a5b00}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1712;--ink:#eef0e8;--mut:#9aa496;--card:#17221b;--line:#2a382e;--acc:#f2c14e;--acc-ink:#14231b;--in:#5fd39a;--out:#ff8a76;--warn:#f2c14e}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:max(14px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+main{max-width:520px;margin:0 auto}
+h1{font-size:1.25rem;margin:0}h2{font-size:1.35rem;margin:6px 0 14px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+button{font:inherit;color:inherit;cursor:pointer}
+.link{background:none;border:0;color:var(--mut);padding:8px 4px;text-decoration:underline}
+.tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 2px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.68rem;line-height:1.1;text-align:center;min-height:68px}
+.tile span{font-size:1.6rem;line-height:1}
+.tile:active{transform:scale(.96)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.opts{display:grid;gap:10px}
+.opt{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:left;font-size:1.05rem}
+.opt.sel{border:2px solid var(--acc)}
+.big{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.big .opt{text-align:center;font-weight:600;padding:26px 8px}
+.in{color:var(--in)}.out{color:var(--out)}
+input[type=text],input[type=search],input[type=number],input[type=date]{width:100%;font:inherit;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+input.amount{font-size:2rem;font-weight:700;text-align:center;padding:18px}
+.nav{display:flex;gap:10px;margin-top:16px}
+.nav button{flex:1;padding:15px;border-radius:14px;border:1px solid var(--line);background:var(--card);font-weight:600}
+.nav .primary{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.nav button:disabled{opacity:.4}
+.steps{display:flex;gap:4px;margin-bottom:12px}.steps i{flex:1;height:4px;border-radius:2px;background:var(--line)}.steps i.on{background:var(--acc)}
+.sum{display:grid;gap:8px;margin:10px 0}.sum div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:8px 0}.sum small{color:var(--mut)}
+.msg{color:var(--warn);min-height:1.2em;margin:8px 0 0}
+.ok{text-align:center;padding:30px 10px}.ok b{font-size:3rem;display:block;color:var(--in)}
+.list{max-height:46vh;overflow:auto;display:grid;gap:8px;margin-top:10px}
+small.m{color:var(--mut)}
+</style>
+</head>
+<body>
+<main id="app"><p>Cargando…</p></main>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.102.0';
+const ENDPOINT='https://script.google.com/macros/s/AKfycbypxLeRAH7PNQCAfYV14_V_cSbp5soxaX07vxDbyt8HV8efn1W7cPIKXR_XMut6cz-k/exec';
+const client=createClient('https://lxyqosqgvkgjybgffdob.supabase.co','sb_publishable_1J_TfuzcCqaqtDVDIaiLAw_uCufZXHC',{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+const $=id=>document.getElementById(id),app=$('app');
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}).format(n||0);
+const norm=v=>String(v||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+// Gastos sugeridos: el nombre del concepto se busca entre los que ya existen en la caja.
+const TILES=[
+ {icon:'⛽',label:'Combustible',find:/combustible|bencina/,dir:'SALIDA'},
+ {icon:'🚿',label:'Lavado',find:/lavado/,dir:'SALIDA'},
+ {icon:'🔧',label:'Arreglo',find:/arreglo|reparaci/,dir:'SALIDA'},
+ {icon:'🛣️',label:'Peaje / TAG',find:/peaje|tag/,dir:'SALIDA'},
+ {icon:'🅿️',label:'Estaciona-miento',find:/estaciona/,dir:'SALIDA'},
+ {icon:'📷',label:'Fotos',find:/foto/,dir:'SALIDA'},
+ {icon:'📣',label:'Publicación',find:/publica/,dir:'SALIDA'},
+ {icon:'🚗',label:'Compra de auto',find:/compra de auto|compra/,dir:'SALIDA'},
+ {icon:'💰',label:'Venta de auto',find:/venta de auto|venta/,dir:'ENTRADA'},
+ {icon:'➕',label:'Otro',find:null,dir:''}
+];
+let data=null,token=null,form,step,msg='',done=null,busy=false;
+const blank=()=>({direction:'',conceptId:'',conceptSet:false,vehicleId:'',vehicleSet:false,amount:'',accountId:'',date:'',note:'',requestId:(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2))});
+const concept=()=>data.concepts.find(c=>c.id===form.conceptId);
+const needsCar=()=>!!concept()?.vehicleOperation;
+// Pasos según lo ya respondido: dirección → concepto → auto (si corresponde) → monto → cuenta → resumen.
+const order=()=>['direction','concept',...(needsCar()?['car']:[]),'amount','account','review'];
+const answered=k=>({direction:!!form.direction,concept:form.conceptSet,car:form.vehicleSet,amount:Number(form.amount)>0,account:!!form.accountId,review:false}[k]);
+function save(){try{localStorage.setItem('oc-atajo-data',JSON.stringify(data));}catch{}}
+async function call(action,payload={}){
+ const {data:s}=await client.auth.getSession();if(!s.session)throw Error('SIN_SESION');token=s.session.access_token;
+ const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action,token}),credentials:'omit',redirect:'follow',referrerPolicy:'no-referrer'});
+ const j=await r.json();if(!j.ok)throw Error(j.error||'No se pudo guardar.');return j.data;
+}
+function go(k){step=k;msg='';render();}
+function next(){const o=order(),i=o.indexOf(step);go(o[Math.min(o.length-1,i+1)]);}
+function back(){const o=order(),i=o.indexOf(step);if(i>0)go(o[i-1]);}
+function reset(){form=blank();form.date=data?.today||'';step='home';done=null;msg='';render();}
+function pickTile(t){
+ form=blank();form.date=data.today;if(t.dir)form.direction=t.dir;
+ const c=t.find&&data.concepts.find(c=>t.find.test(norm(c.name)));
+ if(c){form.conceptId=c.id;form.conceptSet=true;}
+ // Directo a lo que falta: auto (si es de auto) → monto.
+ const o=order();step=!form.direction?'direction':!form.conceptSet?'concept':needsCar()?'car':'amount';render();
+}
+function header(title){return `<header><h1>${esc(title)}</h1><button class="link" id="again">Borrar y empezar de nuevo</button></header>`;}
+function bar(){const o=order(),i=o.indexOf(step);return `<div class="steps">${o.map((k,j)=>`<i class="${j<=i?'on':''}"></i>`).join('')}</div>`;}
+function nav(canNext,label){return `<div class="nav"><button id="back">← Atrás</button><button id="next" class="primary" ${canNext?'':'disabled'}>${label||'Siguiente →'}</button></div><p class="msg">${esc(msg)}</p>`;}
+function render(){
+ if(!data){app.innerHTML='<p>Cargando…</p>';return;}
+ if(done){app.innerHTML=`<div class="card ok"><b>✓</b><h2>Guardado</h2><p>${esc(done)}</p><div class="nav"><button class="primary" id="newone">Registrar otro</button></div></div>`;$('newone').onclick=reset;return;}
+ if(step==='home'){
+  app.innerHTML=`<header><h1>Registrar movimiento</h1></header><div class="tiles">${TILES.map((t,i)=>`<button class="tile" data-t="${i}"><span>${t.icon}</span>${esc(t.label)}</button>`).join('')}</div><div class="card"><p style="margin:0 0 12px">¿Entró o salió dinero?</p><div class="big"><button class="opt in" data-d="ENTRADA">⬇ Entró</button><button class="opt out" data-d="SALIDA">⬆ Salió</button></div></div>`;
+  app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>pickTile(TILES[b.dataset.t]));
+  app.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{form=blank();form.date=data.today;form.direction=b.dataset.d;step='concept';render();});
+  return;
+ }
+ let body='';
+ if(step==='direction')body=`<h2>¿Entró o salió dinero?</h2><div class="big"><button class="opt in ${form.direction==='ENTRADA'?'sel':''}" data-d="ENTRADA">⬇ Entró</button><button class="opt out ${form.direction==='SALIDA'?'sel':''}" data-d="SALIDA">⬆ Salió</button></div>`+nav(!!form.direction);
+ if(step==='concept'){
+  const list=data.concepts.filter(c=>form.direction==='ENTRADA'?c.nature!=='GASTO'&&c.nature!=='COSTO':c.nature!=='INGRESO');
+  body=`<h2>Concepto</h2><input type="search" id="q" placeholder="Buscar concepto"><div class="list" id="list"></div>`+nav(form.conceptSet);
+  app.innerHTML=header('Registrar')+bar()+`<div class="card">${body}</div>`;
+  const draw=()=>{const q=norm($('q').value);$('list').innerHTML=`<button class="opt ${form.conceptSet&&!form.conceptId?'sel':''}" data-c="">Concepto por asignar</button>`+list.filter(c=>!q||norm(c.name+' '+c.category).includes(q)).map(c=>`<button class="opt ${form.conceptId===c.id?'sel':''}" data-c="${esc(c.id)}">${esc(c.name)}<br><small class="m">${esc(c.category)}</small></button>`).join('');
+   $('list').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{form.conceptId=b.dataset.c;form.conceptSet=true;form.vehicleId='';form.vehicleSet=false;next();});};
+  $('q').oninput=draw;draw();wireCommon();return;
+ }
+ if(step==='car'){
+  body=`<h2>¿Qué auto?</h2><input type="search" id="q" placeholder="Patente, marca o modelo" autocomplete="off"><div class="list" id="list"></div>`+nav(form.vehicleSet);
+  app.innerHTML=header('Registrar')+bar()+`<div class="card">${body}</div>`;
+  const draw=()=>{const q=norm($('q').value).replace(/\s+/g,'');const hits=data.inventory.filter(v=>!q||norm([v.patente,v.marca,v.modelo,v.version].join('')).includes(q)).slice(0,40);
+   $('list').innerHTML=`<button class="opt ${form.vehicleSet&&!form.vehicleId?'sel':''}" data-v="">Patente por asignar</button>`+hits.map(v=>`<button class="opt ${form.vehicleId===v.id?'sel':''}" data-v="${esc(v.id)}"><b>${esc(v.patente||'Sin patente')}</b> · ${esc([v.marca,v.modelo].filter(Boolean).join(' '))}</button>`).join('');
+   $('list').querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{form.vehicleId=b.dataset.v;form.vehicleSet=true;next();});};
+  $('q').oninput=draw;draw();wireCommon();return;
+ }
+ if(step==='amount')body=`<h2>${form.direction==='ENTRADA'?'¿Cuánto entró?':'¿Cuánto fue?'}</h2><input class="amount" id="amt" type="text" inputmode="numeric" autocomplete="off" placeholder="$0" value="${form.amount?money(Number(form.amount)):''}"><label style="display:block;margin-top:12px"><small class="m">Nota (opcional)</small><input type="text" id="note" maxlength="120" value="${esc(form.note)}" placeholder="Ej. proveedor, detalle"></label>`+nav(Number(form.amount)>0);
+ if(step==='account'){body=`<h2>${form.direction==='ENTRADA'?'¿A qué cuenta llegó?':'¿Con qué pagaste?'}</h2><div class="opts">${data.accounts.map(a=>`<button class="opt ${form.accountId===a.id?'sel':''}" data-a="${esc(a.id)}">${esc(a.nombre)}</button>`).join('')}</div>`+nav(!!form.accountId);}
+ if(step==='review'){const c=concept(),v=data.inventory.find(v=>v.id===form.vehicleId),a=data.accounts.find(a=>a.id===form.accountId);
+  body=`<h2>Revisar y guardar</h2><div class="sum"><div><small>Tipo</small><b class="${form.direction==='ENTRADA'?'in':'out'}">${form.direction==='ENTRADA'?'Entró':'Salió'}</b></div><div><small>Concepto</small><b>${esc(c?c.name:'Por asignar')}</b></div>${needsCar()?`<div><small>Auto</small><b>${esc(v?v.patente||v.modelo:'Por asignar')}</b></div>`:''}<div><small>Monto</small><b>${money(Number(form.amount))}</b></div><div><small>Cuenta</small><b>${esc(a?.nombre||'')}</b></div><div><small>Fecha</small><input type="date" id="date" value="${esc(form.date)}" max="${esc(data.today)}" style="width:auto;padding:8px"></div>${form.note?`<div><small>Nota</small><b>${esc(form.note)}</b></div>`:''}</div>`+nav(!busy,busy?'Guardando…':'Guardar');}
+ app.innerHTML=(step==='direction'?header('Registrar'):header('Registrar'))+bar()+`<div class="card">${body}</div>`;
+ wireCommon();
+ app.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{form.direction=b.dataset.d;form.conceptId='';form.conceptSet=false;next();});
+ app.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{form.accountId=b.dataset.a;next();});
+ const amt=$('amt');if(amt){amt.oninput=()=>{const n=amt.value.replace(/\D/g,'').slice(0,10);form.amount=n;amt.value=n?money(Number(n)):'';$('next').disabled=!(Number(n)>0);};amt.focus();}
+ const note=$('note');if(note)note.oninput=()=>{form.note=note.value;};
+ const date=$('date');if(date)date.onchange=()=>{form.date=date.value;};
+}
+function wireCommon(){
+ const again=$('again');if(again)again.onclick=reset;
+ const b=$('back');if(b)b.onclick=()=>{if(order().indexOf(step)===0){step='home';render();}else back();};
+ const n=$('next');if(n)n.onclick=async()=>{if(step!=='review')return next();await submit();};
+}
+async function submit(){
+ if(busy)return;busy=true;msg='';render();
+ try{
+  const r=await call('quick',{requestId:form.requestId,direction:form.direction,conceptId:form.conceptId,vehicleId:form.vehicleId,amount:Number(form.amount),accountId:form.accountId,date:form.date,note:form.note});
+  const c=concept(),a=data.accounts.find(a=>a.id===form.accountId);
+  done=`${form.direction==='ENTRADA'?'Entró':'Salió'} ${money(Number(form.amount))} · ${c?c.name:'concepto por asignar'} · ${a?.nombre||''}`;
+ }catch(e){msg=e.message==='SIN_SESION'?'Tu sesión venció. Abre admin.oportunicars.cl e inicia sesión.':e.message;}
+ busy=false;render();
+}
+(async()=>{
+ try{const c=JSON.parse(localStorage.getItem('oc-atajo-data'));if(c&&c.concepts){data=c;reset();}}catch{}
+ try{
+  data=await call('quickData');data.today=data.today||new Date().toLocaleDateString('en-CA',{timeZone:'America/Santiago'});save();
+  if(!form||step==='home'||!step)reset();else render();
+ }catch(e){
+  if(e.message==='SIN_SESION'){app.innerHTML='<div class="card"><h2>Inicia sesión</h2><p>Abre <a href="/">admin.oportunicars.cl</a>, entra con tu usuario y vuelve a este atajo.</p></div>';return;}
+  if(!data)app.innerHTML='<div class="card"><h2>No se pudo cargar</h2><p>'+esc(e.message)+'</p><div class="nav"><button class="primary" onclick="location.reload()">Reintentar</button></div></div>';
+ }
+})();
+</script>
+</body>
+</html>
