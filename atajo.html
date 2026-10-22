@@ -149,13 +149,17 @@ async function submit(){
  }catch(e){msg=e.message==='SIN_SESION'?'Tu sesión venció. Abre admin.oportunicars.cl e inicia sesión.':e.message;}
  busy=false;render();
 }
+function loginView(err=''){
+ app.innerHTML=`<div class="card"><h2>Inicia sesión</h2><p><small class="m">Solo la primera vez en este teléfono.</small></p><form id="lf" style="display:grid;gap:10px"><input type="text" id="em" inputmode="email" autocomplete="username" autocapitalize="none" placeholder="Correo"><input type="password" id="pw" autocomplete="current-password" placeholder="Contraseña" style="width:100%;font:inherit;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)"><button class="opt sel" type="submit">Entrar</button></form><p class="msg">${esc(err)}</p></div>`;
+ $('lf').onsubmit=async e=>{e.preventDefault();const {error}=await client.auth.signInWithPassword({email:$('em').value.trim(),password:$('pw').value});if(error)return loginView('Correo o contraseña incorrectos.');location.reload();};
+}
 (async()=>{
  try{const c=JSON.parse(localStorage.getItem('oc-atajo-data'));if(c&&c.concepts){data=c;reset();}}catch{}
  try{
   data=await call('quickData');data.today=data.today||new Date().toLocaleDateString('en-CA',{timeZone:'America/Santiago'});save();
   if(!form||step==='home'||!step)reset();else render();
  }catch(e){
-  if(e.message==='SIN_SESION'){app.innerHTML='<div class="card"><h2>Inicia sesión</h2><p>Abre <a href="/">admin.oportunicars.cl</a>, entra con tu usuario y vuelve a este atajo.</p></div>';return;}
+  if(e.message==='SIN_SESION'){loginView();return;}
   if(!data)app.innerHTML='<div class="card"><h2>No se pudo cargar</h2><p>'+esc(e.message)+'</p><div class="nav"><button class="primary" onclick="location.reload()">Reintentar</button></div></div>';
  }
 })();
