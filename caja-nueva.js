@@ -17,14 +17,16 @@ function missing(m){
 const isComplete=m=>missing(m).length===0;
 const signed=m=>(m.direction===ENT?1:-1)*m.amount;
 const isNew=(m,start)=>!!m.date&&m.date>start;
+const inRange=(m,start,mode)=>mode==='hist'?(!m.date||m.date<=start):isNew(m,start);
 // Saldo de cada cuenta y saldo corrido después de cada movimiento completo (en orden de fecha).
-function balances(accounts,movements,start){
+function balances(accounts,movements,start,mode){
  const out={};
  accounts.forEach(a=>{
-  const rows=movements.map((m,i)=>({m,i})).filter(({m})=>m.accountId===a.id&&isNew(m,a.cut||start)&&isComplete(m)).sort((x,y)=>x.m.date.localeCompare(y.m.date)||x.i-y.i);
-  const running={};let acc=a.opening;
+  const hist=mode==='hist',cut=hist?start:(a.cut||start);
+  const rows=movements.map((m,i)=>({m,i})).filter(({m})=>m.accountId===a.id&&inRange(m,cut,mode)&&isComplete(m)).sort((x,y)=>x.m.date.localeCompare(y.m.date)||x.i-y.i);
+  const running={};let acc=hist?0:a.opening;
   rows.forEach(({m})=>{if(acc!==null){acc+=signed(m);running[m.id]=acc;}});
-  const pending=movements.filter(m=>m.accountId===a.id&&isNew(m,a.cut||start)&&!isComplete(m)&&!isQuickOpen(m));
+  const pending=movements.filter(m=>m.accountId===a.id&&inRange(m,cut,mode)&&!isComplete(m)&&!isQuickOpen(m));
   out[a.id]={opening:a.opening,computed:acc,running,pending:{count:pending.length,sum:pending.reduce((s,m)=>s+(Number.isFinite(m.amount)?m.amount:0),0)}};
  });
  return out;
@@ -40,65 +42,73 @@ function findMatches(list){
  }
  return out;
 }
-const api={missing,isComplete,balances,findMatches,isNew};
+const api={missing,isComplete,balances,findMatches,isNew,inRange};
 if(typeof module!=='undefined')module.exports=api;
 if(!root.document)return;
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>Number.isFinite(n)?new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}).format(n):'—';
 const fmtDate=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'')?v.slice(8,10)+'-'+v.slice(5,7)+'-'+v.slice(0,4):'Sin fecha';
-let s,config,start,matched=false;
+let s,config,start,matched=false,mode='nueva';
 function reset(){s=null;config=null;matched=false;document.querySelectorAll('[data-cn-dialog]').forEach(d=>d.remove());}
 function setup(options={}){
  config=options;start=options.cashStart||'2026-10-15';matched=false;
- s={movements:(options.movements||[]).slice(),concepts:options.concepts||[],inventory:options.inventory||[],tab:'',message:'',busy:false,checks:{},limit:80};
+ s={movements:(options.movements||[]).slice(),concepts:options.concepts||[],inventory:options.inventory||[],tab:{nueva:'',hist:''},editing:'',message:'',busy:false,checks:{},limit:80};
 }
 const snapshot=()=>s?{movements:s.movements,concepts:s.concepts}:null;
 function replaceMovements(list){if(s)s.movements=list;}
 const accountsInfo=()=>config?.accountsInfo?config.accountsInfo():[];
 const carLabel=v=>[v.patente||'Sin patente',v.modelo].filter(Boolean).join(' · ');
 function carIndex(){const seen={},map=new Map();s.inventory.forEach(v=>{let l=carLabel(v);if(seen[l])l+=' #'+v.id;seen[l]=1;map.set(l,v);});return map;}
-function markup(){return '<section id="oc-caja-nueva" class="oc-card"></section>';}
-function mount(parent){const el=parent.querySelector('#oc-caja-nueva');if(el&&s){draw(el);autoMatch(el);}}
+function markup(m){mode=m==='hist'?'hist':'nueva';return '<section id="oc-caja-nueva" class="oc-card"></section>';}
+function mount(parent){const el=parent.querySelector('#oc-caja-nueva');if(el&&s){draw(el);if(mode==='nueva')autoMatch(el);}}
 function conceptsFor(m){return s.concepts.filter(c=>m.direction===ENT?['INGRESO','TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].includes(c.nature):m.direction===SAL?c.nature!=='INGRESO':true);}
 function check(id){try{return JSON.parse(localStorage.getItem('oc-cuadre-'+id));}catch{return null;}}
-function accountCard(a,b){
- const real=s.checks[a.id]??check(a.id),pend=b.pending.count?`<small class="oc-warn-text">${b.pending.count} por completar · ${money(b.pending.sum)}</small>`:'<small>Todo al día</small>';
+function accountCard(a,bl){
+ if(mode==='hist'){
+  const gap=a.opening===null?null:a.opening-bl.computed,pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
+  return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${money(bl.computed)}</strong><small>Según lo registrado hasta el ${esc(fmtDate(start))}</small>${a.opening!==null?`<small>Saldo real al ${esc(fmtDate(start))}: <b>${money(a.opening)}</b></small><small>${gap===0?'Historia completa':'Falta reconstruir '+money(gap)}</small>`:''}${pend}</article>`;
+ }
+ const real=s.checks[a.id]??check(a.id),pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
  const diffText=real?(real.diff===0?`<span class="oc-chip oc-chip-ok">Cuadra · ${fmtDate(real.at)}</span>`:`<span class="oc-chip oc-chip-bad">Diferencia ${money(real.diff)} · ${fmtDate(real.at)}</span>`):'';
- return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${b.computed===null?'Sin saldo inicial':money(b.computed)}</strong>${pend}<div class="cn-check"><input type="number" step="1" inputmode="numeric" placeholder="Saldo real hoy" data-real="${esc(a.id)}"><button type="button" data-cuadrar="${esc(a.id)}">Cuadrar</button></div>${diffText}</article>`;
+ return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${pend}<div class="cn-check"><input type="number" step="1" inputmode="numeric" placeholder="Saldo real hoy" data-real="${esc(a.id)}"><button type="button" data-cuadrar="${esc(a.id)}">Cuadrar</button></div>${diffText}</article>`;
 }
-function rowMarkup(m,b,mode){
+function controls(m){
+ const c=m.classification,list=conceptsFor(m),vehicle=c?.vehicleOperation,miss=missing(m);
+ return '<div class="cn-controls">'+
+  (!dirOk(m)?`<span class="cn-q">${m.direction?'Sugerido: '+(m.direction===ENT?'ingreso':'egreso'):'¿Fue ingreso o egreso?'}</span><button data-dir="${m.id}" data-v="${ENT}">Fue ingreso</button><button data-dir="${m.id}" data-v="${SAL}">Fue egreso</button>`:'')+
+  (dirOk(m)?`<select data-concept="${m.id}"><option value="">${c?esc(c.name):'Concepto por asignar'}</option>${list.filter(x=>x.id!==c?.id).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>`:'')+
+  (vehicle?`<input list="cn-cars" data-car="${m.id}" placeholder="Patente, marca o modelo" value="${esc(c.vehicleId?carLabel(s.inventory.find(v=>String(v.id)===String(c.vehicleId))||{}):'')}">`:'')+
+  (miss.length===1&&miss[0]==='Importe'?`<button data-confirm="${m.id}">Importe correcto</button>`:'')+
+  (c||m.confirmed?`<button data-unassign="${m.id}" class="cn-undo">Deshacer asignación</button>`:'')+'</div>';
+}
+function rowMarkup(m,bl,tab){
  const tone=m.direction===ENT&&!m.directionInferred?'oc-in':m.direction===SAL&&!m.directionInferred?'oc-out':'oc-unknown',miss=missing(m);
  const sign=m.direction===SAL?'−':m.direction===ENT?'+':'';
- let right='';
- if(mode==='completar'){
-  const c=m.classification,list=conceptsFor(m),vehicle=c?.vehicleOperation;
-  right='<div class="cn-controls">'+
-   (!dirOk(m)?`<span class="cn-q">${m.direction?'Sugerido: '+(m.direction===ENT?'ingreso':'egreso'):'¿Fue ingreso o egreso?'}</span><button data-dir="${m.id}" data-v="${ENT}">Fue ingreso</button><button data-dir="${m.id}" data-v="${SAL}">Fue egreso</button>`:'')+
-   (dirOk(m)?`<select data-concept="${m.id}"><option value="">${c?esc(c.name):'Concepto por asignar'}</option>${list.filter(x=>x.id!==c?.id).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>`:'')+
-   (vehicle?`<input list="cn-cars" data-car="${m.id}" placeholder="Patente, marca o modelo" value="${esc(c.vehicleId?carLabel(s.inventory.find(v=>String(v.id)===String(c.vehicleId))||{}):'')}">`:'')+
-   (miss.length===1&&miss[0]==='Importe'?`<button data-confirm="${m.id}">Importe correcto</button>`:'')+'</div>';
- }
- const run=mode==='movimientos'&&b?.running[m.id]!==undefined?`<small class="cn-run">Saldo ${money(b.running[m.id])}</small>`:'';
- const tag=mode==='atajos'?'<span class="oc-chip oc-chip-warn">Registrado · espera el movimiento real</span>':miss.length&&mode==='completar'?miss.map(x=>`<span class="oc-chip oc-chip-bad">Falta ${esc(x.toLowerCase())}</span>`).join(' '):'';
- return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${mode==='atajos'?' cn-gray':''}"><div><small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div>${right}</article>`;
+ const open=tab==='completar'||s.editing===m.id,quick=tab==='atajos';
+ const right=quick?'':open?controls(m):`<div class="cn-controls"><button data-edit="${m.id}" class="cn-edit">Corregir</button></div>`;
+ const run=tab==='movimientos'&&bl?.running[m.id]!==undefined?`<small class="cn-run">Saldo ${money(bl.running[m.id])}</small>`:'';
+ const tag=quick?'<span class="oc-chip oc-chip-warn">Registrado · espera el movimiento real</span>':miss.length&&tab==='completar'?miss.map(x=>`<span class="oc-chip oc-chip-bad">Falta ${esc(x.toLowerCase())}</span>`).join(' '):'';
+ return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${quick?' cn-gray':''}"><div><small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div>${right}</article>`;
 }
 function draw(el){
- const infos=accountsInfo(),bal=balances(infos,s.movements,start),all=s.movements.filter(m=>isNew(m,start));
- const todo=all.filter(m=>!isComplete(m)&&!isQuickOpen(m)).sort((a,b)=>b.date.localeCompare(a.date)),done=all.filter(isComplete).sort((a,b)=>b.date.localeCompare(a.date)),quick=all.filter(isQuickOpen).sort((a,b)=>b.date.localeCompare(a.date));
- if(!s.tab)s.tab=todo.length?'completar':'movimientos';
- const list=s.tab==='completar'?todo:s.tab==='atajos'?quick:done;
+ const hist=mode==='hist',infos=accountsInfo(),bal=balances(infos,s.movements,start,mode),all=s.movements.filter(m=>inRange(m,start,mode));
+ const byDate=(a,b)=>(b.date||'').localeCompare(a.date||'');
+ const todo=all.filter(m=>!isComplete(m)&&!isQuickOpen(m)).sort(byDate),done=all.filter(isComplete).sort(byDate),quick=all.filter(isQuickOpen).sort(byDate);
+ const tabs=s.tab;if(!tabs[mode])tabs[mode]=todo.length?'completar':'movimientos';const tab=tabs[mode];
+ const list=tab==='completar'?todo:tab==='atajos'?quick:done;
  const balOf=m=>bal[m.accountId];
- const needSetup=infos.some(a=>a.opening===null||a.cut!==start);
+ const needSetup=!hist&&infos.some(a=>a.opening===null);
  const completable=todo.filter(m=>{const x=missing(m);return x.length===1&&x[0]==='Importe';});
- el.innerHTML=`<p class="oc-eyebrow">CAJA Y BANCOS · DESDE ${esc(fmtDate(start))}</p><h2>Saldo exacto, movimiento a movimiento.</h2><p>Un movimiento mueve el saldo cuando tiene fecha, ingreso o egreso, concepto, auto (si es de auto) e importe confirmado. Lo anterior al ${esc(fmtDate(start))} está en <b>Caja histórica</b>.</p>
- ${needSetup&&config.saveBalance?`<div class="oc-notice"><strong>Falta fijar los saldos iniciales</strong><p>Saldos al cierre del ${esc(fmtDate(start))}. Se guardan una sola vez.</p><button id="cn-setup">Fijar saldos iniciales</button></div>`:''}
+ const head=hist?`<p class="oc-eyebrow">CAJA HISTÓRICA · HASTA EL ${esc(fmtDate(start))}</p><h2>Reconstruye el pasado, sin apuro.</h2><p>Mismos movimientos y mismas reglas que Caja y bancos. El saldo de cada cuenta es lo que suman los movimientos ya registrados correctamente; cuando la historia esté completa debe coincidir con el saldo real del ${esc(fmtDate(start))}.</p>`:`<p class="oc-eyebrow">CAJA Y BANCOS · DESDE ${esc(fmtDate(start))}</p><h2>Saldo exacto, movimiento a movimiento.</h2><p>Los saldos iniciales al ${esc(fmtDate(start))} son definitivos. Un movimiento mueve el saldo cuando tiene fecha, ingreso o egreso, concepto, auto (si es de auto) e importe confirmado.</p>`;
+ el.innerHTML=`${head}
+ ${needSetup&&config.saveBalance?`<div class="oc-notice"><strong>Faltan saldos iniciales</strong><p>Se fijan una sola vez y no se pueden modificar.</p><button id="cn-setup">Fijar saldos iniciales</button></div>`:''}
  ${s.message?`<p role="status">${esc(s.message)}</p>`:''}
  <div class="cn-cards">${infos.map(a=>accountCard(a,bal[a.id])).join('')||'<p>Sin cuentas.</p>'}</div>
- <div class="oc-tabs"><button class="oc-tab${s.tab==='completar'?' active':''}" data-cn-tab="completar">Por completar (${todo.length})</button><button class="oc-tab${s.tab==='movimientos'?' active':''}" data-cn-tab="movimientos">Movimientos (${done.length})</button><button class="oc-tab${s.tab==='atajos'?' active':''}" data-cn-tab="atajos">Registrados por atajo (${quick.length})</button></div>
- ${s.tab==='completar'&&completable.length>1?`<p><button id="cn-confirm-all">Confirmar ${completable.length} importes ya completos</button></p>`:''}
+ <div class="oc-tabs"><button class="oc-tab${tab==='completar'?' active':''}" data-cn-tab="completar">Por completar (${todo.length})</button><button class="oc-tab${tab==='movimientos'?' active':''}" data-cn-tab="movimientos">Movimientos (${done.length})</button>${quick.length||!hist?`<button class="oc-tab${tab==='atajos'?' active':''}" data-cn-tab="atajos">Registrados por atajo (${quick.length})</button>`:''}</div>
+ ${tab==='completar'&&completable.length>1?`<p><button id="cn-confirm-all">Confirmar ${completable.length} importes ya completos</button></p>`:''}
  <datalist id="cn-cars">${[...carIndex().keys()].map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist>
- <div class="oc-caja-list">${list.slice(0,s.limit).map(m=>rowMarkup(m,balOf(m),s.tab)).join('')||'<p>Nada por aquí.</p>'}</div>
+ <div class="oc-caja-list">${list.slice(0,s.limit).map(m=>rowMarkup(m,balOf(m),tab)).join('')||'<p>Nada por aquí.</p>'}</div>
  ${list.length>s.limit?`<p><button id="cn-more">Mostrar más (${list.length-s.limit})</button></p>`:''}`;
  wire(el);
 }
@@ -107,18 +117,18 @@ async function persist(el,next){
  const prev=s.movements.find(x=>x.id===next.id);if(!prev||prev.saving)return;
  const undo=config.applyLocal?config.applyLocal(next):()=>{};
  replace({...next,saving:true});draw(el);
- try{const saved=await config.saveMovement(next);replace({...(saved||next),saving:false});s.message='Guardado.';}
+ try{const saved=await config.saveMovement(next);replace({...(saved||next),saving:false});s.editing='';s.message='Guardado.';}
  catch(e){undo();replace(prev);s.message=e.message;}
  draw(el);
 }
 async function run(el,m,fn){
  if(m.saving)return;replace({...m,saving:true});draw(el);
- try{const next=await fn();replace({...next,saving:false});s.message='Guardado.';}
+ try{const next=await fn();replace({...next,saving:false});s.editing='';s.message='Guardado.';}
  catch(e){replace(m);s.message=e.message;}
  draw(el);
 }
 function wire(el){
- el.querySelectorAll('[data-cn-tab]').forEach(b=>b.onclick=()=>{s.tab=b.dataset.cnTab;s.limit=80;draw(el);});
+ el.querySelectorAll('[data-cn-tab]').forEach(b=>b.onclick=()=>{s.tab[mode]=b.dataset.cnTab;s.limit=80;draw(el);});
  const more=el.querySelector('#cn-more');if(more)more.onclick=()=>{s.limit+=100;draw(el);};
  const setupBtn=el.querySelector('#cn-setup');if(setupBtn)setupBtn.onclick=()=>setupDialog(el);
  el.querySelectorAll('[data-cuadrar]').forEach(b=>b.onclick=()=>{
@@ -138,10 +148,12 @@ function wire(el){
   const v=carIndex().get(b.value.trim());if(!v){s.message='Elige un auto de la lista (patente, marca o modelo).';draw(el);return;}
   const m=s.movements.find(x=>x.id===b.dataset.car);try{persist(el,root.OCCaja.assignVehicle(m,v.id,s.inventory));}catch(e){s.message=e.message;draw(el);}
  });
+ el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{s.editing=b.dataset.edit;draw(el);});
+ el.querySelectorAll('[data-unassign]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.unassign);if(!m||!config.unassign)return;if(!confirm('¿Deshacer la asignación de este movimiento? Vuelve a «Por completar» y deja de contar en el saldo.'))return;s.editing='';run(el,m,()=>config.unassign(m));});
  el.querySelectorAll('[data-confirm]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.confirm);run(el,m,()=>config.confirmAmount(m));});
  const all=el.querySelector('#cn-confirm-all');
  if(all)all.onclick=async()=>{
-  const rows=s.movements.filter(m=>isNew(m,start)&&!isQuickOpen(m)).filter(m=>{const x=missing(m);return x.length===1&&x[0]==='Importe';}).slice(0,60);
+  const rows=s.movements.filter(m=>inRange(m,start,mode)&&!isQuickOpen(m)).filter(m=>{const x=missing(m);return x.length===1&&x[0]==='Importe';}).slice(0,60);
   s.busy=true;let n=0;
   for(const m of rows){try{const cur=s.movements.find(x=>x.id===m.id);replace(await config.confirmAmount(cur));n++;}catch(e){s.message=e.message;break;}}
   s.busy=false;if(!s.message)s.message=n+' importes confirmados.';draw(el);

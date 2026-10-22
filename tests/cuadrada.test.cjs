@@ -17,3 +17,8 @@ test('El saldo del sistema exige concepto y auto desde el arranque, no antes',()
  const d={accounts:[{cuenta_id:'a',nombre:'MP',saldo_inicial:1000,fecha_saldo_inicial:'2026-10-15'}],movements:[{cuenta_id:'a',fecha_operacion:'2026-10-16',monto:100,direccion:'SALIDA',monto_confirmado:'SI',incluir_en_saldo:'SI'},{cuenta_id:'a',fecha_operacion:'2026-10-17',monto:50,direccion:'SALIDA',monto_confirmado:'SI',incluir_en_saldo:'SI',concepto_id:'c'}],inventory:[],operations:[],activities:[],forecasts:[],loans:[],strictFrom:'2026-10-15'};
  assert.equal(core.reports(d,'2026-10-20').accounts[0].balance,950);
 });
+test('Caja histórica: suma lo registrado correctamente hasta el corte, sin saldo inicial',()=>{
+ const a=mv({date:'2026-10-01',direction:'ENTRADA',amount:700}),b=mv({date:'2026-10-02',amount:200}),c=mv({date:'2026-10-03',amount:50,confirmed:false}),d=mv({date:'2026-10-16',amount:999}),u=mv({date:'',amount:10});
+ const r=N.balances(acc,[a,b,c,d,u],'2026-10-15','hist').a;
+ assert.equal(r.computed,500);assert.equal(r.pending.count,2);
+});

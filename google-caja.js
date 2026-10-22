@@ -48,6 +48,7 @@
    movementsForCaja(){const names=accountNames();return D.movements.filter(r=>r.estado_registro!=='ANULADO').map(r=>mapMovement(r,names));},
    hiddenCount(){return D.hidden;},
    accountsInfo(){return D.accounts.filter(a=>a.estado_registro!=='ANULADO').map(a=>({id:String(a.cuenta_id),name:String(a.nombre),opening:a.saldo_inicial===''||a.saldo_inicial===undefined?null:Number(a.saldo_inicial),cut:parseDay(a.fecha_saldo_inicial),version:Number(a.version||1)}));},
+   mapped(id){const raw=D.movements.find(r=>String(r.movimiento_id)===id);return raw?mapMovement(raw,accountNames()):null;},
    patchRaw(id,patch){const raw=D.movements.find(r=>String(r.movimiento_id)===id);if(raw){Object.assign(raw,patch);invalidate();}},
    inventoryForCaja(){return D.inventory.map(inventoryItem);},
    async save(table,record,requestId,expectedVersion){
@@ -92,6 +93,7 @@
    hiddenCount:store.hiddenCount,cashStart:CASH_START,accountsInfo:store.accountsInfo,
    async saveBalance(id,balance,date,version){return store.saveBalance(id,balance,date,version);},
    async confirmAmount(m){const r=await call('confirmAmount',{id:m.id,expectedVersion:m.version});store.patchRaw(m.id,{monto_confirmado:'SI',incluir_en_saldo:'SI',version:r.version});return {...m,confirmed:true,version:Number(r.version)};},
+   async unassign(m){const r=await call('unassign',{id:m.id,expectedVersion:m.version});store.patchRaw(m.id,{concepto_id:'',concepto_nombre:'',concepto_version:'',categoria:'',naturaleza:'',tipo_costo:'',recurrente:'',operacion_auto:'',vehiculo_id:'',estado_clasificacion:'PENDIENTE',actividad_id:'',proyeccion_id:'',prestamo_id:'',componente_prestamo:'',socio:'',monto_confirmado:'NO',incluir_en_saldo:'NO',version:r.version});return store.mapped(m.id);},
    async quickMatch(q,x){const r=await call('quickMatch',{quickId:q.id,targetId:x.id,expectedVersion:x.version});store.patchRaw(q.id,{estado_registro:'ANULADO'});store.patchRaw(x.id,r.target);return r.target;},
    applyLocal:store.applyLocal
   }};

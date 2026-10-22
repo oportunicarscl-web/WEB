@@ -59,9 +59,6 @@
     if (!['operacional','gerencial','pendiente'].includes(next)&&!canAccess(role,next)) return;
     if(next==='gerencial'&&!['gerencial','administrador','finanzas'].includes(role))return;
     // Las vistas se dibujan con los datos ya cargados: navegar no consulta a Google.
-    // Las dos cajas comparten los mismos movimientos: al cambiar de una a otra se pasan los cambios.
-    if(view==='finanzas'&&next==='historica'){const x=root.OCCajaNueva?.snapshot();if(x&&root.OCCaja?.replaceData)root.OCCaja.replaceData(x);}
-    if(view==='historica'&&next==='finanzas'){const x=root.OCCaja?.snapshot();if(x)root.OCCajaNueva?.replaceMovements(x.movements);}
     view=next;table='';query='';render();
   }
   function render() {
@@ -95,8 +92,8 @@
   function summary(){return root.OCSistema?root.OCSistema.markup(view==='gerencial'?'analitica':'resumen'):pending();}
   function moduleView(){
     if(!canAccess(role,view))return pending();
-    if(view==='finanzas'&&root.OCCajaNueva)return root.OCCajaNueva.markup();
-    if(view==='historica'&&root.OCCaja)return root.OCCaja.markup();
+    if(view==='finanzas'&&root.OCCajaNueva)return root.OCCajaNueva.markup('nueva');
+    if(view==='historica'&&root.OCCajaNueva)return root.OCCajaNueva.markup('hist');
     if(root.OCSistema)return root.OCSistema.markup(view);
     const ts=tablesFor(view,root.OCSchema);
     const selected=ts.find(t=>t.name===table);
