@@ -8,6 +8,8 @@
  const inventoryItem=v=>({id:v.vehiculo_id,patente:v.patente,modelo:[v.marca,v.modelo,v.version_vehiculo].filter(Boolean).join(' ')});
 
  // La fecha viene como fecha de la hoja (AAAA-MM-DD), texto DD/MM/AAAA o la fecha original de Mercado Pago (ISO con zona).
+ // Arranque de la caja cuadrada: saldos iniciales al cierre de este día; lo anterior es la Caja histórica.
+ const CASH_START='2026-10-15';
  function parseDay(v){const s=String(v||'').trim();let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);if(m)return m[1]+'-'+m[2]+'-'+m[3];m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):'';}
  // Solo cuenta lo efectivo: lo rechazado, cancelado, vencido o solo autorizado (sin capturar) no se muestra ni suma.
  const effective=r=>{const s=String(r.estado_fuente||'').toLowerCase();return !s||s==='approved'||s==='accredited';};
@@ -21,7 +23,7 @@
  // Misma lógica que el backend (ocMovement_), para no pedir dos veces los movimientos.
  function mapMovement(r,accounts){
   const c=r.concepto_id?{id:String(r.concepto_id),name:String(r.concepto_nombre),version:Number(r.concepto_version),category:String(r.categoria||''),nature:String(r.naturaleza),cost:String(r.tipo_costo),recurring:r.recurrente==='SI',vehicleOperation:String(r.operacion_auto||''),vehicleId:r.vehiculo_id?String(r.vehiculo_id):null}:null;
-  return {id:String(r.movimiento_id),version:Number(r.version||1),date:parseDay(r.fecha_operacion)||parseDay(r.fecha_original),account:accounts[String(r.cuenta_id)]||String(r.cuenta_id),description:String(r.descripcion||r.referencia||'Movimiento'),amount:typeof r.monto==='number'?r.monto:null,direction:String(r.direccion||'')||inferDirection(r),directionInferred:!r.direccion&&!!inferDirection(r),confirmed:r.monto_confirmado==='SI'&&r.incluir_en_saldo==='SI',status:c?(r.estado_clasificacion||(c.vehicleOperation&&!c.vehicleId?'POR_ASIGNAR_AUTO':'CLASIFICADO')):'PENDIENTE',classification:c,activityId:String(r.actividad_id||''),forecastId:String(r.proyeccion_id||''),prestamoId:String(r.prestamo_id||''),loanComponent:String(r.componente_prestamo||''),socio:String(r.socio||'')};
+  return {id:String(r.movimiento_id),version:Number(r.version||1),date:parseDay(r.fecha_operacion)||parseDay(r.fecha_original),account:accounts[String(r.cuenta_id)]||String(r.cuenta_id),description:String(r.descripcion||r.referencia||'Movimiento'),amount:typeof r.monto==='number'?r.monto:null,direction:String(r.direccion||'')||inferDirection(r),directionInferred:!r.direccion&&!!inferDirection(r),confirmed:r.monto_confirmado==='SI'&&r.incluir_en_saldo==='SI',accountId:String(r.cuenta_id),source:String(r.estado_importacion||''),origin:String(r.origen||''),status:c?(r.estado_clasificacion||(c.vehicleOperation&&!c.vehicleId?'POR_ASIGNAR_AUTO':'CLASIFICADO')):'PENDIENTE',classification:c,activityId:String(r.actividad_id||''),forecastId:String(r.proyeccion_id||''),prestamoId:String(r.prestamo_id||''),loanComponent:String(r.componente_prestamo||''),socio:String(r.socio||'')};
  }
  // Copia a la fila cruda los campos de clasificación, para que los reportes cambien al instante.
  function patchRaw(raw,m){
@@ -30,7 +32,7 @@
  }
 
  function createStore(call,loaded){
-  const D={inventory:loaded.inventory,operations:loaded.operations,activities:loaded.activities,movements:loaded.movements.filter(effective),hidden:loaded.movements.filter(r=>!effective(r)).length,accounts:loaded.accounts,forecasts:loaded.forecasts,loans:loaded.loans,companyStart:loaded.companyStart||'',sync:loaded.sync||null,canFinance:true};
+  const D={strictFrom:CASH_START,inventory:loaded.inventory,operations:loaded.operations,activities:loaded.activities,movements:loaded.movements.filter(effective),hidden:loaded.movements.filter(r=>!effective(r)).length,accounts:loaded.accounts,forecasts:loaded.forecasts,loans:loaded.loans,companyStart:loaded.companyStart||'',sync:loaded.sync||null,canFinance:true};
   let cache=null;const invalidate=()=>{cache=null;};
   const accountNames=()=>Object.fromEntries(D.accounts.map(a=>[a.cuenta_id,a.nombre]));
   function state(){
@@ -43,8 +45,10 @@
   const upsert=(list,key,patch)=>{const i=list.findIndex(r=>r[key]===patch[key]);if(i>=0)Object.assign(list[i],patch);else list.push({...patch});};
   return {
    state,today,
-   movementsForCaja(){const names=accountNames();return D.movements.map(r=>mapMovement(r,names));},
+   movementsForCaja(){const names=accountNames();return D.movements.filter(r=>r.estado_registro!=='ANULADO').map(r=>mapMovement(r,names));},
    hiddenCount(){return D.hidden;},
+   accountsInfo(){return D.accounts.filter(a=>a.estado_registro!=='ANULADO').map(a=>({id:String(a.cuenta_id),name:String(a.nombre),opening:a.saldo_inicial===''||a.saldo_inicial===undefined?null:Number(a.saldo_inicial),cut:parseDay(a.fecha_saldo_inicial),version:Number(a.version||1)}));},
+   patchRaw(id,patch){const raw=D.movements.find(r=>String(r.movimiento_id)===id);if(raw){Object.assign(raw,patch);invalidate();}},
    inventoryForCaja(){return D.inventory.map(inventoryItem);},
    async save(table,record,requestId,expectedVersion){
     const patch=await call('saveSystem',{table,record,requestId,expectedVersion});
@@ -85,9 +89,12 @@
    async saveMovement(m){let version=m.version;if(m.directionInferred&&['ENTRADA','SALIDA'].includes(m.direction)){const d=await call('setDirection',{id:m.id,direction:m.direction,expectedVersion:version});version=Number(d.version||version+1);}
     const saved=await call('classify',{id:m.id,expectedVersion:version,conceptId:m.classification.id,conceptVersion:m.classification.version,vehicleId:m.classification.vehicleId,activityId:m.activityId||'',forecastId:m.forecastId||'',prestamoId:m.prestamoId||'',loanComponent:m.loanComponent||'',socio:m.socio||''});saved.date=saved.date||m.date;saved.directionInferred=false;store.applySaved(saved);return saved;},
    async setDirection(m,direction){const d=await call('setDirection',{id:m.id,direction,expectedVersion:m.version});store.applySaved({...m,direction,version:Number(d.version||m.version+1),directionInferred:false});return {...m,direction,version:Number(d.version||m.version+1),directionInferred:false};},
-   hiddenCount:store.hiddenCount,
+   hiddenCount:store.hiddenCount,cashStart:CASH_START,accountsInfo:store.accountsInfo,
+   async saveBalance(id,balance,date,version){return store.saveBalance(id,balance,date,version);},
+   async confirmAmount(m){const r=await call('confirmAmount',{id:m.id,expectedVersion:m.version});store.patchRaw(m.id,{monto_confirmado:'SI',incluir_en_saldo:'SI',version:r.version});return {...m,confirmed:true,version:Number(r.version)};},
+   async quickMatch(q,x){const r=await call('quickMatch',{quickId:q.id,targetId:x.id,expectedVersion:x.version});store.patchRaw(q.id,{estado_registro:'ANULADO'});store.patchRaw(x.id,r.target);return r.target;},
    applyLocal:store.applyLocal
   }};
  }
- root.OCGoogleCaja={connect,mapMovement,createStore,parseDay,effective,inferDirection};
+ root.OCGoogleCaja={CASH_START,connect,mapMovement,createStore,parseDay,effective,inferDirection};
 })(window);

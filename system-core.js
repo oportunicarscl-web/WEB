@@ -7,12 +7,14 @@ const paid=m=>m.monto_confirmado==='SI'&&m.incluir_en_saldo==='SI'&&['ENTRADA','
 const dirOf=m=>['ENTRADA','SALIDA'].includes(m.direccion)?m.direccion:(['COSTO','GASTO'].includes(m.naturaleza)?'SALIDA':m.naturaleza==='INGRESO'?'ENTRADA':'');
 // Movimiento utilizable para costos y márgenes por auto aunque su importe siga «por confirmar» (los saldos de cuenta sí exigen confirmación).
 const usable=m=>n(m.monto)!==null&&Number(m.monto)>=0&&dirOf(m)!=='';
+// Desde la fecha de arranque de la caja cuadrada un movimiento solo mueve el saldo si está completo: concepto y, si es de auto, el auto.
+const complete=(m,from)=>!from||!(m.fecha_operacion>from)||(!!m.concepto_id&&(!m.operacion_auto||!!m.vehiculo_id));
 const active=r=>r.estado_registro!=='ANULADO'&&(!r.ambiente||r.ambiente==='PRODUCCION');
 function reports(d,today){
  const sid=r=>r.vehiculo_id===undefined||r.vehiculo_id===null||r.vehiculo_id===''?r:{...r,vehiculo_id:String(r.vehiculo_id).trim()};
  const moves=d.movements.filter(active).map(sid),confirmed=moves.filter(paid).filter(m=>date(m.fecha_operacion)&&m.fecha_operacion<=today),counted=moves.filter(usable).filter(m=>!date(m.fecha_operacion)||m.fecha_operacion<=today).map(m=>({...m,direccion:dirOf(m)})),activities=d.activities.filter(active).map(sid),ops=d.operations.filter(active).map(sid);
  const accountRows=d.accounts.filter(active).map(a=>{
-  const opening=n(a.saldo_inicial),cut=date(a.fecha_saldo_inicial),rows=confirmed.filter(m=>m.cuenta_id===a.cuenta_id&&date(m.fecha_operacion)&&cut&&m.fecha_operacion>cut&&m.fecha_operacion<=today);
+  const opening=n(a.saldo_inicial),cut=date(a.fecha_saldo_inicial),rows=confirmed.filter(m=>m.cuenta_id===a.cuenta_id&&date(m.fecha_operacion)&&cut&&m.fecha_operacion>cut&&m.fecha_operacion<=today&&complete(m,d.strictFrom));
   return {id:a.cuenta_id,name:a.nombre,balance:opening===null||!cut?null:opening+rows.reduce((s,m)=>s+(m.direccion==='ENTRADA'?1:-1)*Number(m.monto),0)};
  });
  const cars=d.inventory.filter(active).map(sid).map(v=>{
@@ -93,11 +95,11 @@ function carExpenses(confirmed,today){
 }
 // Cuadre: compara el saldo calculado con una referencia independiente (saldo real ingresado o saldo_cartola).
 // diff > 0: el banco tiene más que el sistema (falta una ENTRADA). diff < 0: falta una SALIDA.
-function reconcileAccount(a,movements,today,real){
+function reconcileAccount(a,movements,today,real,strictFrom){
  const out={id:a.cuenta_id,name:a.nombre,opening:n(a.saldo_inicial),cut:date(a.fecha_saldo_inicial),computed:null,diff:null,status:'SIN_SALDO',unconfirmed:{count:0,sum:0},candidates:[],firstBreak:null,reference:null};
  if(out.opening===null||!out.cut)return out;
- const own=movements.filter(m=>m.cuenta_id===a.cuenta_id&&active(m)),ok=own.filter(paid).filter(m=>date(m.fecha_operacion)&&m.fecha_operacion>out.cut&&m.fecha_operacion<=today);
- const open=own.filter(m=>!paid(m)||!date(m.fecha_operacion));
+ const own=movements.filter(m=>m.cuenta_id===a.cuenta_id&&active(m)),ok=own.filter(paid).filter(m=>date(m.fecha_operacion)&&m.fecha_operacion>out.cut&&m.fecha_operacion<=today&&complete(m,strictFrom));
+ const open=own.filter(m=>(!paid(m)||!date(m.fecha_operacion)||!complete(m,strictFrom))&&(!date(m.fecha_operacion)||m.fecha_operacion>out.cut));
  out.unconfirmed={count:open.length,sum:open.reduce((s,m)=>s+(['ENTRADA','SALIDA'].includes(m.direccion)&&n(m.monto)!==null?signed(m):0),0)};
  out.computed=out.opening+ok.reduce((s,m)=>s+signed(m),0);
  out.status='SIN_REFERENCIA';
@@ -113,6 +115,6 @@ function reconcileAccount(a,movements,today,real){
  }
  return out;
 }
-function reconcile(d,today,real){real=real||{};return d.accounts.filter(active).map(a=>reconcileAccount(a,d.movements,today,real[a.cuenta_id]));}
+function reconcile(d,today,real){real=real||{};return d.accounts.filter(active).map(a=>reconcileAccount(a,d.movements,today,real[a.cuenta_id],d.strictFrom));}
 const api={reports,paid,date,number:n,active,signed,reconcile,reconcileAccount,fixedFromCaja,carExpenses};if(typeof module!=='undefined')module.exports=api;root.OCSystemCore=api;
 })(typeof globalThis==='undefined'?this:globalThis);

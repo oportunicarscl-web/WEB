@@ -1,7 +1,7 @@
 // Oportunicars · Carga única + Mercado Pago. Archivo NUEVO: crear 'Carga.gs' y pegar todo.
 // ---- Carga única para la web (v5) ----
 // Lee cada hoja UNA vez y devuelve filas livianas. La web calcula los reportes localmente.
-const OC_MOV_FIELDS=['movimiento_id','cuenta_id','fecha_operacion','monto','direccion','descripcion','referencia','monto_confirmado','incluir_en_saldo','version','concepto_id','concepto_nombre','concepto_version','categoria','naturaleza','tipo_costo','recurrente','operacion_auto','vehiculo_id','estado_clasificacion','actividad_id','proyeccion_id','prestamo_id','componente_prestamo','socio','saldo_cartola','operacion_origen_id','estado_fuente','tipo_fuente','fecha_original','ambiente','estado_registro'];
+const OC_MOV_FIELDS=['movimiento_id','cuenta_id','fecha_operacion','monto','direccion','descripcion','referencia','monto_confirmado','incluir_en_saldo','version','concepto_id','concepto_nombre','concepto_version','categoria','naturaleza','tipo_costo','recurrente','operacion_auto','vehiculo_id','estado_clasificacion','actividad_id','proyeccion_id','prestamo_id','componente_prestamo','socio','saldo_cartola','operacion_origen_id','estado_fuente','tipo_fuente','fecha_original','estado_importacion','origen','observacion','created_at','ambiente','estado_registro'];
 function osSlim_(r,fields){const x=osClean_(r),o={};fields.forEach(k=>{if(x[k]!==undefined)o[k]=x[k];});return o;}
 function osLoad_(actor){
  const maestros='OC_MAESTROS_ID',prod=(book,name)=>ocTable_(book,name).rows.filter(ocProd_);

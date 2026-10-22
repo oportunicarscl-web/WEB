@@ -3,16 +3,17 @@
   const areas = [
     {id:'finanzas',name:'Caja y bancos',hint:'Movimientos y clasificación',tables:['MOVIMIENTOS_BANCARIOS','CONCEPTOS_CAJA']},
     {id:'operaciones',name:'Autos y operación',hint:'Registrar auto, completar ficha, vender y mantener el stock de Claxo',tables:['VEHICULOS','AUTOS_OPERACION','ACTIVIDADES_AUTOS']},
+    {id:'historica',name:'Caja histórica',hint:'Antes del arranque de la caja cuadrada',tables:[]},
     {id:'gestion',name:'Finanzas y patrimonio',hint:'Rendimiento del capital, proyecciones y tamaño óptimo de flota',tables:['APORTES_CAPITAL_SOCIOS']},
     {id:'compromisos',name:'Compromisos no caja',hint:'Cobros, pagos y préstamos',tables:['PROYECCIONES','PRESTAMOS']},
     {id:'analitica',name:'Gerencia',hint:'Resultados consolidados',tables:[]},
     {id:'parametros',name:'Configuración',hint:'Cuentas, usuarios y conceptos',tables:['USUARIOS','CUENTAS_FINANCIERAS','PERFILES_IMPORTACION']}
   ];
   const roles = {
-    operativo:{label:'Operaciones',home:'finanzas',areas:['finanzas','operaciones','analitica','compromisos']},
+    operativo:{label:'Operaciones',home:'finanzas',areas:['finanzas','historica','operaciones','analitica','compromisos']},
     gerencial:{label:'Gerencia',home:'finanzas',areas:areas.map(a=>a.id)},
     administrador:{label:'Administración',home:'finanzas',areas:areas.map(a=>a.id)},
-    finanzas:{label:'Finanzas',home:'finanzas',areas:['finanzas','gestion','analitica','parametros']}
+    finanzas:{label:'Finanzas',home:'finanzas',areas:['finanzas','historica','gestion','analitica','parametros']}
   };
   const assignments = Object.freeze({jt:'operativo',mmusa:'operativo',alex:'gerencial',gonzalo:'gerencial'});
   function resolveRole(user) {
@@ -35,14 +36,16 @@
   let host,session=null,role=null,view='',table='',query='',preview=false;
   function node(html) { const t=document.createElement('template');t.innerHTML=html;return t.content; }
   function close() {
-    root.OCCaja?.reset();
+    root.OCCaja?.reset();root.OCCajaNueva?.reset();
     host?.remove();host=null;session=null;role=null;query='';table='';
     document.body.classList.remove('workspace-open');
     document.title='Oportunicars · Acceso';
   }
   function open(options) {
     close(); session=options; preview=options.preview===true;
-    root.OCCaja?.setup({preview,userId:options.user?.id,...options.caja});
+    const cut=options.caja?.cashStart||'2026-10-15';
+    root.OCCaja?.setup({preview,userId:options.user?.id,...options.caja,historic:true,keep:m=>!m.date||m.date<=cut});
+    root.OCCajaNueva?.setup({preview,...options.caja,cashStart:cut});
     root.OCSistema?.setup({...options.system,canManage:options.profile?.manage});
     role=preview?resolveRole(options.user):(Object.hasOwn(roles,options.profile?.role)?options.profile.role:null);view=role?roles[role].home:'pendiente';
     host=document.createElement('div');host.id='oc-workspace';
@@ -50,12 +53,15 @@
     render();
   }
   // Por ahora solo Caja y bancos y Autos y operación están activas; el resto se ve en el menú pero no carga ni cambia la vista.
-  const active=['finanzas','operaciones'];
+  const active=['finanzas','historica','operaciones'];
   function navigate(next) {
     if(!active.includes(next))return;
     if (!['operacional','gerencial','pendiente'].includes(next)&&!canAccess(role,next)) return;
     if(next==='gerencial'&&!['gerencial','administrador','finanzas'].includes(role))return;
     // Las vistas se dibujan con los datos ya cargados: navegar no consulta a Google.
+    // Las dos cajas comparten los mismos movimientos: al cambiar de una a otra se pasan los cambios.
+    if(view==='finanzas'&&next==='historica'){const x=root.OCCajaNueva?.snapshot();if(x&&root.OCCaja?.replaceData)root.OCCaja.replaceData(x);}
+    if(view==='historica'&&next==='finanzas'){const x=root.OCCaja?.snapshot();if(x)root.OCCajaNueva?.replaceMovements(x.movements);}
     view=next;table='';query='';render();
   }
   function render() {
@@ -80,7 +86,7 @@
     const search=host.querySelector('#oc-search');
     if(search)search.oninput=()=>{query=search.value;renderTables();};
     host.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>showFields(b.dataset.detail));
-    root.OCCaja?.mount(host);
+    root.OCCaja?.mount(host);root.OCCajaNueva?.mount(host);
     root.OCSistema?.mount(host);
 
   }
@@ -89,7 +95,8 @@
   function summary(){return root.OCSistema?root.OCSistema.markup(view==='gerencial'?'analitica':'resumen'):pending();}
   function moduleView(){
     if(!canAccess(role,view))return pending();
-    if(view==='finanzas'&&root.OCCaja)return root.OCCaja.markup();
+    if(view==='finanzas'&&root.OCCajaNueva)return root.OCCajaNueva.markup();
+    if(view==='historica'&&root.OCCaja)return root.OCCaja.markup();
     if(root.OCSistema)return root.OCSistema.markup(view);
     const ts=tablesFor(view,root.OCSchema);
     const selected=ts.find(t=>t.name===table);
