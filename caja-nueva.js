@@ -104,6 +104,7 @@ function draw(el){
  const head=hist?`<p class="oc-eyebrow">CAJA HISTÓRICA · HASTA EL ${esc(fmtDate(start))}</p><h2>Reconstruye el pasado, sin apuro.</h2><p>Mismos movimientos y mismas reglas que Caja y bancos. El saldo de cada cuenta es lo que suman los movimientos ya registrados correctamente; cuando la historia esté completa debe coincidir con el saldo real del ${esc(fmtDate(start))}.</p>`:`<p class="oc-eyebrow">CAJA Y BANCOS · DESDE ${esc(fmtDate(start))}</p><h2>Saldo exacto, movimiento a movimiento.</h2><p>Los saldos iniciales al ${esc(fmtDate(start))} son definitivos. Un movimiento mueve el saldo cuando tiene fecha, ingreso o egreso, concepto, auto (si es de auto) e importe confirmado.</p>`;
  el.innerHTML=`${head}
  ${needSetup&&config.saveBalance?`<div class="oc-notice"><strong>Faltan saldos iniciales</strong><p>Se fijan una sola vez y no se pueden modificar.</p><button id="cn-setup">Fijar saldos iniciales</button></div>`:''}
+ ${!hist&&config.syncMercadoPago&&config.canManageConcepts?`<p><button id="cn-mp" ${s.syncing?'disabled':''}>${s.syncing?'Consultando Mercado Pago…':'Actualizar Mercado Pago'}</button> <small>Trae los pagos de los últimos 7 días; lo nuevo queda en «Por completar».</small></p>`:''}
  ${s.message?`<p role="status">${esc(s.message)}</p>`:''}
  <div class="cn-cards">${infos.map(a=>accountCard(a,bal[a.id])).join('')||'<p>Sin cuentas.</p>'}</div>
  <div class="oc-tabs"><button class="oc-tab${tab==='completar'?' active':''}" data-cn-tab="completar">Por completar (${todo.length})</button><button class="oc-tab${tab==='movimientos'?' active':''}" data-cn-tab="movimientos">Movimientos (${done.length})</button>${quick.length||!hist?`<button class="oc-tab${tab==='atajos'?' active':''}" data-cn-tab="atajos">Registrados por atajo (${quick.length})</button>`:''}</div>
@@ -131,6 +132,7 @@ async function run(el,m,fn){
 function wire(el){
  el.querySelectorAll('[data-cn-tab]').forEach(b=>b.onclick=()=>{s.tab[mode]=b.dataset.cnTab;s.limit=80;draw(el);});
  const more=el.querySelector('#cn-more');if(more)more.onclick=()=>{s.limit+=100;draw(el);};
+ const mp=el.querySelector('#cn-mp');if(mp)mp.onclick=async()=>{if(s.syncing)return;s.syncing=true;draw(el);try{const r=await config.syncMercadoPago(7);s.movements=r.movements;s.message=r.agregados?`Mercado Pago: ${r.agregados} movimiento${r.agregados===1?'':'s'} nuevo${r.agregados===1?'':'s'} en «Por completar».`:'Mercado Pago al día: no hay movimientos nuevos.';}catch(e){s.message=e.message;}s.syncing=false;draw(el);if(mode==='nueva')autoMatch(el);};
  const setupBtn=el.querySelector('#cn-setup');if(setupBtn)setupBtn.onclick=()=>setupDialog(el);
  el.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.dir);run(el,m,async()=>config.setDirection(m,b.dataset.v));});
  el.querySelectorAll('[data-concept]').forEach(b=>b.onchange=()=>{

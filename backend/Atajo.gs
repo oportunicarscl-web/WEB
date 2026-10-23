@@ -12,6 +12,7 @@ function ocExtra_(p,actor){
  if(p.action==='unassign')return ocUnassign_(p,actor);
  if(p.action==='manualAdd')return ocManualAdd_(p,actor);
  if(p.action==='manualVoid')return ocManualVoid_(p,actor);
+ if(p.action==='syncMercadoPago')return osMpSync_(p,actor);
  return undefined;
 }
 function ocToday_(){return Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd');}

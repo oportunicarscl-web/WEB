@@ -32,19 +32,20 @@ function osMpSearch_(days){
  return out;
 }
 // Pagos nuevos de los últimos N días (por defecto 7; el disparador por hora llama sin argumento).
+function osMpPull_(days){
+ const profile=osMpProfile_(),today=Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd');
+ const known={};ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS').rows.forEach(m=>{if(m.cuenta_id===profile.cuenta_id&&m.operacion_origen_id!=='')known[String(m.operacion_origen_id)]=true;});
+ const fresh=osMpSearch_(typeof days==='number'&&days>0?days:7).filter(p=>!known[String(p.id)]).map(p=>osMpRow_(p,today)).filter(r=>r.fecha);
+ const out={recibidos:fresh.length,agregados:0,repetidos:0,porRevisar:0};
+ for(let i=0;i<fresh.length;i+=50){
+  const r=osImport_({profileId:profile.perfil_id,profileVersion:Number(profile.version),rows:fresh.slice(i,i+50),offset:i,batch:'MP-API-'+today.replace(/-/g,'')},{manage:true,id:'MERCADO_PAGO_API'});
+  out.agregados+=r.added;out.repetidos+=r.repeated;out.porRevisar+=r.review;
+ }
+ return out;
+}
 function traerPagosMercadoPago(days){
  const lock=LockService.getScriptLock();if(!lock.tryLock(15000))throw Error('Otro proceso está en curso.');
- try{
-  const profile=osMpProfile_(),today=Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd');
-  const known={};ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS').rows.forEach(m=>{if(m.cuenta_id===profile.cuenta_id&&m.operacion_origen_id!=='')known[String(m.operacion_origen_id)]=true;});
-  const fresh=osMpSearch_(typeof days==='number'&&days>0?days:7).filter(p=>!known[String(p.id)]).map(p=>osMpRow_(p,today)).filter(r=>r.fecha);
-  const out={recibidos:fresh.length,agregados:0,repetidos:0,porRevisar:0};
-  for(let i=0;i<fresh.length;i+=50){
-   const r=osImport_({profileId:profile.perfil_id,profileVersion:Number(profile.version),rows:fresh.slice(i,i+50),offset:i,batch:'MP-API-'+today.replace(/-/g,'')},{manage:true,id:'MERCADO_PAGO_API'});
-   out.agregados+=r.added;out.repetidos+=r.repeated;out.porRevisar+=r.review;
-  }
-  return out;
- }finally{lock.releaseLock();}
+ try{return osMpPull_(days);}finally{lock.releaseLock();}
 }
 // Completa fecha_operacion en los movimientos de Mercado Pago que no la tienen (los 426 provisionales) y, si la dirección está vacía,
 // la completa con evidencia del propio pago. Hasta 100 por ejecución: repetir hasta que 'pendientes' sea 0. No cambia importe ni clasificación.
@@ -68,15 +69,24 @@ function completarFechasMercadoPago(){
 }
 // Completa la dirección de los movimientos de Mercado Pago que no la traen, solo donde el tipo de operación la prueba:
 // account_fund (depósito a la cuenta) y pos_payment (venta presencial) son ENTRADA. El resto se define al clasificar en la web.
+function osMpDirections_(){
+ const profile=osMpProfile_(),t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),now=new Date().toISOString();let done=0;
+ t.rows.filter(r=>ocProd_(r)&&r.cuenta_id===profile.cuenta_id&&!r.direccion&&['account_fund','pos_payment'].indexOf(String(r.tipo_fuente))>=0&&String(r.estado_fuente||'approved')==='approved').forEach(r=>{
+  const patch={direccion:'ENTRADA',version:Number(r.version||1)+1};if(t.headers.indexOf('updated_at')>=0)patch.updated_at=now;if(t.headers.indexOf('updated_by')>=0)patch.updated_by='SISTEMA_MP';
+  ocPatchRow_(t,r._row,patch);done++;
+ });
+ return {direccionesCompletadas:done};
+}
 function completarDireccionesMercadoPago(){
  const lock=LockService.getScriptLock();if(!lock.tryLock(15000))throw Error('Otro proceso está en curso.');
- try{
-  const profile=osMpProfile_(),t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),now=new Date().toISOString();let done=0;
-  t.rows.filter(r=>ocProd_(r)&&r.cuenta_id===profile.cuenta_id&&!r.direccion&&['account_fund','pos_payment'].indexOf(String(r.tipo_fuente))>=0&&String(r.estado_fuente||'approved')==='approved').forEach(r=>{
-   const patch={direccion:'ENTRADA',version:Number(r.version||1)+1};if(t.headers.indexOf('updated_at')>=0)patch.updated_at=now;if(t.headers.indexOf('updated_by')>=0)patch.updated_by='SISTEMA_MP';
-   ocPatchRow_(t,r._row,patch);done++;
-  });
-  return {direccionesCompletadas:done};
- }finally{lock.releaseLock();}
+ try{return osMpDirections_();}finally{lock.releaseLock();}
+}
+// Botón «Actualizar Mercado Pago» de la web (el router ya tiene el candado). Solo administradores.
+function osMpSync_(p,actor){
+ if(!actor||!actor.manage)throw Error('Acceso restringido.');
+ if(!PropertiesService.getScriptProperties().getProperty('MP_ACCESS_TOKEN'))throw Error('Falta el token de Mercado Pago (propiedad MP_ACCESS_TOKEN).');
+ const days=Math.min(30,Math.max(1,Math.floor(Number(p.days)||7))),r=osMpPull_(days),d=osMpDirections_();
+ PropertiesService.getScriptProperties().setProperty('OC_MP_LAST_SYNC',new Date().toISOString());
+ return {dias:days,recibidos:r.recibidos,agregados:r.agregados,repetidos:r.repetidos,porRevisar:r.porRevisar,direccionesCompletadas:d.direccionesCompletadas,at:new Date().toISOString()};
 }
 function activarPagosMercadoPago(){if(!ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='traerPagosMercadoPago'))ScriptApp.newTrigger('traerPagosMercadoPago').timeBased().everyHours(1).create();return {programada:true};}
