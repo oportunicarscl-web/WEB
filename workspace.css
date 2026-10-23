@@ -176,3 +176,5 @@ body.workspace-open{
 #oc-workspace .cn-gray{opacity:.62;background:#f1f1ee}
 #oc-workspace .oc-warn-text{color:#9a5b00}
 #oc-workspace .cn-undo{color:#a8321f}#oc-workspace .cn-edit{opacity:.8}
+
+#oc-workspace .cn-total{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:14px 0 0}#oc-workspace .cn-total strong{font-size:26px}#oc-workspace .cn-sync{background:none;border:0;box-shadow:none;padding:0 4px;font-size:18px;line-height:1;color:#8c6d3f;opacity:.6;cursor:pointer;min-height:0}#oc-workspace .cn-sync:hover{opacity:1}#oc-workspace .cn-sync.spin{animation:cn-spin 1s linear infinite}@keyframes cn-spin{to{transform:rotate(360deg)}}

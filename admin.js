@@ -51,9 +51,9 @@ function draw(el){
  const manual=(root.OCCajaNueva?.movementsBySource('MANUAL')||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,40);
  el.innerHTML=`<p class="oc-eyebrow">ADMINISTRAR</p><h2>Movimientos a mano</h2><p>Respaldo para lo que la API de Mercado Pago o la cartola automática no traen. Quedan con el importe confirmado; si les asignas concepto (y auto) cuentan en el saldo de inmediato. Las importaciones automáticas tendrán su propia opción.</p>
  ${s.message?`<p role="status">${esc(s.message)}</p>`:''}
- <div class="oc-tabs"><button class="oc-tab${s.tab==='uno'?' active':''}" data-ad-tab="uno">Un movimiento</button><button class="oc-tab${s.tab==='varios'?' active':''}" data-ad-tab="varios">Pegar varias líneas</button><button class="oc-tab${s.tab==='lista'?' active':''}" data-ad-tab="lista">Ingresados a mano (${manual.length})</button></div>
+ <div class="oc-tabs"><button class="oc-tab${s.tab==='uno'?' active':''}" data-ad-tab="uno">Un movimiento</button><button class="oc-tab${s.tab==='varios'?' active':''}" data-ad-tab="varios">Pegar varias líneas</button><button class="oc-tab${s.tab==='lista'?' active':''}" data-ad-tab="lista">Ingresados a mano (${manual.length})</button><button class="oc-tab${s.tab==='mp'?' active':''}" data-ad-tab="mp">Mercado Pago</button></div>
  <datalist id="ad-cars">${[...carMap().keys()].map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist>
- ${s.tab==='uno'?one():s.tab==='varios'?many():list(manual)}`;
+ ${s.tab==='uno'?one():s.tab==='varios'?many():s.tab==='mp'?mp():list(manual)}`;
  wire(el);
 }
 function one(){
@@ -74,6 +74,7 @@ function many(){
  ${s.parsed.length?`<div class="oc-table-scroll"><table><thead><tr><th>#</th><th>Fecha</th><th>Descripción</th><th>Monto</th><th></th></tr></thead><tbody>${s.parsed.map(x=>x.error?`<tr><td>${x.line}</td><td colspan="3">${esc(x.raw)}</td><td><span class="oc-chip oc-chip-bad">${esc(x.error)}</span></td></tr>`:`<tr><td>${x.line}</td><td>${esc(fmtDate(x.date))}</td><td>${esc(x.description)}</td><td class="${x.direction==='ENTRADA'?'oc-in':'oc-out'}">${x.direction==='ENTRADA'?'+':'−'}${money(x.amount)}</td><td><span class="oc-chip oc-chip-ok">Listo</span></td></tr>`).join('')}</tbody></table></div>
  <p>${ok.length} listas${bad?` · ${bad} con error (corrígelas para guardar)`:''}</p><p><button id="ad-save" ${bad||!ok.length||s.busy?'disabled':''}>Guardar ${ok.length} movimientos</button></p>`:''}`;
 }
+function mp(){return `<p>Claves de la API de Mercado Pago (Access Token, y opcionalmente Public Key, Client ID y Client Secret). Se guardan en Google y no se vuelven a mostrar. Si algún día el token falla, el botón de actualizar te abrirá este mismo cuadro.</p><p><button id="ad-token">Registrar o cambiar claves</button></p>`;}
 function list(rows){
  return rows.length?`<div class="oc-caja-list">${rows.map(m=>`<article class="oc-caja-row"><div><small>${esc(m.account)} · ${esc(fmtDate(m.date))}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${m.direction==='ENTRADA'?'oc-in':'oc-out'}">${m.direction==='SALIDA'?'−':'+'}${money(m.amount)}</strong>${m.classification?`<small>${esc(m.classification.name)}</small>`:'<small>Sin concepto: queda en «Por completar»</small>'}</div><div class="cn-controls"><button data-ad-void="${esc(m.id)}" class="cn-undo">Anular</button></div></article>`).join('')}</div>`:'<p>Todavía no hay movimientos ingresados a mano.</p>';
 }
@@ -90,6 +91,7 @@ function wire(el){
  if(one)one.onsubmit=e=>{e.preventDefault();const f=Object.fromEntries(new FormData(one)),car=f.car?carMap().get(f.car.trim()):null;
   if(f.car&&!car){s.message='Elige un auto de la lista.';draw(el);return;}
   submit(el,[{date:f.date,direction:f.direction,amount:Number(f.amount),description:f.description,conceptId:f.conceptId||'',vehicleId:car?String(car.id):''}],f.accountId||s.account);};
+ const tk=el.querySelector('#ad-token');if(tk)tk.onclick=()=>root.OCCajaNueva?.tokenDialog(el);
  const text=el.querySelector('#ad-text');if(text)text.oninput=()=>{s.text=text.value;};
  const parse=el.querySelector('#ad-parse');if(parse)parse.onclick=()=>{s.parsed=parseLines(s.text);s.requestId=uid();draw(el);};
  const save=el.querySelector('#ad-save');if(save)save.onclick=()=>submit(el,s.parsed.filter(x=>!x.error).map(x=>({date:x.date,direction:x.direction,amount:x.amount,description:x.description})),s.account);

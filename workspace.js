@@ -45,9 +45,8 @@
     close(); session=options; preview=options.preview===true;
     const cut=options.caja?.cashStart||'2026-10-15';
     root.OCCaja?.setup({preview,userId:options.user?.id,...options.caja,historic:true,keep:m=>!m.date||m.date<=cut});
-    root.OCCajaNueva?.setup({preview,...options.caja,cashStart:cut});
-    // Solo el usuario Alex administra movimientos a mano (el servidor lo vuelve a comprobar).
     admin=!preview&&(String(options.profile?.name||'').trim().toLowerCase()==='alex'||String(options.user?.app_metadata?.oc_username||'').trim().toLowerCase()==='alex');
+    root.OCCajaNueva?.setup({preview,...options.caja,cashStart:cut,isAdmin:admin});
     if(admin)root.OCAdmin?.setup({...options.caja});
     root.OCSistema?.setup({...options.system,canManage:options.profile?.manage});
     role=preview?resolveRole(options.user):(Object.hasOwn(roles,options.profile?.role)?options.profile.role:null);view=role?roles[role].home:'pendiente';

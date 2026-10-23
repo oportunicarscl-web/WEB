@@ -96,7 +96,8 @@
    async confirmAmount(m){const r=await call('confirmAmount',{id:m.id,expectedVersion:m.version});store.patchRaw(m.id,{monto_confirmado:'SI',incluir_en_saldo:'SI',version:r.version});return {...m,confirmed:true,version:Number(r.version)};},
    async unassign(m){const r=await call('unassign',{id:m.id,expectedVersion:m.version});store.patchRaw(m.id,{concepto_id:'',concepto_nombre:'',concepto_version:'',categoria:'',naturaleza:'',tipo_costo:'',recurrente:'',operacion_auto:'',vehiculo_id:'',estado_clasificacion:'PENDIENTE',actividad_id:'',proyeccion_id:'',prestamo_id:'',componente_prestamo:'',socio:'',monto_confirmado:'NO',incluir_en_saldo:'NO',version:r.version});return store.mapped(m.id);},
    async manualAdd(accountId,requestId,rows){const saved=await call('manualAdd',{accountId,requestId,rows});return saved.map(raw=>store.addRaw(raw)).filter(Boolean);},
-   async syncMercadoPago(days){const r=await call('syncMercadoPago',{days});const l=await call('load');D.movements=l.movements.filter(effective);D.hidden=l.movements.filter(x=>!effective(x)).length;D.accounts=l.accounts;invalidate();return {...r,movements:store.movementsForCaja()};},
+   async saveMpToken(t){return call('saveMpToken',t);},
+   async syncMercadoPago(){const r=await call('syncMercadoPago');const l=await call('load');D.movements=l.movements.filter(effective);D.hidden=l.movements.filter(x=>!effective(x)).length;D.accounts=l.accounts;invalidate();return {...r,movements:store.movementsForCaja()};},
    async manualVoid(id){await call('manualVoid',{id});store.patchRaw(id,{estado_registro:'ANULADO'});return true;},
    async quickMatch(q,x){const r=await call('quickMatch',{quickId:q.id,targetId:x.id,expectedVersion:x.version});store.patchRaw(q.id,{estado_registro:'ANULADO'});store.patchRaw(x.id,r.target);return r.target;},
    applyLocal:store.applyLocal

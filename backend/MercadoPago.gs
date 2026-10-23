@@ -81,12 +81,4 @@ function completarDireccionesMercadoPago(){
  const lock=LockService.getScriptLock();if(!lock.tryLock(15000))throw Error('Otro proceso está en curso.');
  try{return osMpDirections_();}finally{lock.releaseLock();}
 }
-// Botón «Actualizar Mercado Pago» de la web (el router ya tiene el candado). Solo administradores.
-function osMpSync_(p,actor){
- if(!actor||!actor.manage)throw Error('Acceso restringido.');
- if(!PropertiesService.getScriptProperties().getProperty('MP_ACCESS_TOKEN'))throw Error('Falta el token de Mercado Pago (propiedad MP_ACCESS_TOKEN).');
- const days=Math.min(30,Math.max(1,Math.floor(Number(p.days)||7))),r=osMpPull_(days),d=osMpDirections_();
- PropertiesService.getScriptProperties().setProperty('OC_MP_LAST_SYNC',new Date().toISOString());
- return {dias:days,recibidos:r.recibidos,agregados:r.agregados,repetidos:r.repetidos,porRevisar:r.porRevisar,direccionesCompletadas:d.direccionesCompletadas,at:new Date().toISOString()};
-}
 function activarPagosMercadoPago(){if(!ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='traerPagosMercadoPago'))ScriptApp.newTrigger('traerPagosMercadoPago').timeBased().everyHours(1).create();return {programada:true};}
