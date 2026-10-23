@@ -69,16 +69,21 @@ function conceptsFor(m){return s.concepts.filter(c=>m.direction===ENT?['INGRESO'
 function totalLine(infos,bal){
  const known=infos.filter(a=>bal[a.id]&&bal[a.id].computed!==null),total=known.reduce((t,a)=>t+bal[a.id].computed,0);
  const sync=config.syncMercadoPago?`<button id="cn-mp" class="cn-sync${s.syncing?' spin':''}" title="Actualizar Mercado Pago" aria-label="Actualizar Mercado Pago" ${s.syncing?'disabled':''}>⟳</button>`:'';
- const mpBal=s.mpBalance?`<small>Mercado Pago informa ${money(s.mpBalance.total??s.mpBalance.disponible)} (${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))})</small>`:'';
+ const mpBal=s.mpBalance?`<small>Saldo según Mercado Pago: ${money(s.mpBalance.saldo)} (${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))})</small>`:'';
  return `<p class="cn-total"><small>Saldo total</small> <strong>${known.length?money(total):'—'}</strong> ${sync} ${mpBal}</p>`;
 }
 async function syncMp(el){
  if(s.syncing)return;s.syncing=true;draw(el);
+ const wait=ms=>new Promise(r=>setTimeout(r,ms));
  try{
-  const r=await config.syncMercadoPago();s.movements=r.movements;
-  if(r.saldoMercadoPago)s.mpBalance={...r.saldoMercadoPago,at:r.at};
-  const n=r.agregados||0;
-  s.message=(n?`Mercado Pago: ${n} movimiento${n===1?'':'s'} nuevo${n===1?'':'s'} (desde ${fmtDate(r.desde)}).`:`Mercado Pago al día (revisado desde ${fmtDate(r.desde)}).`)+(r.reporte&&r.reporte.estado?' '+r.reporte.estado:'')+(r.avisos&&r.avisos.length?' '+r.avisos.join(' '):'');
+  let r=await config.syncMercadoPago('iniciar'),added=r.agregados||0,done=r.completados||0,since=r.desde,bal=null,notes=[];
+  for(let i=0;i<14&&r.fase==='reporte_pendiente';i++){
+   s.message='Esperando el reporte de Mercado Pago ('+Math.min(100,(i+1)*7)+'%)…';draw(el);await wait(12000);
+   r=await config.syncMercadoPago('revisar');added+=r.agregados||0;done+=r.completados||0;if(r.saldoMercadoPago)bal=r.saldoMercadoPago;if(r.avisos)notes=notes.concat(r.avisos);
+  }
+  s.movements=await config.reloadMovements();
+  if(bal)s.mpBalance={saldo:bal.saldo,at:bal.at};
+  s.message=(added?`Mercado Pago: ${added} movimiento${added===1?'':'s'} nuevo${added===1?'':'s'}`:'Mercado Pago al día')+(done?`, ${done} completado${done===1?'':'s'} (fecha o dirección)`:'')+(since?` · revisado desde ${fmtDate(since)}`:'')+'.'+(r.fase==='reporte_pendiente'?' El reporte de retiros y saldo aún no llega; aprieta de nuevo en unos minutos.':'')+(notes.length?' '+notes.join(' '):'');
  }catch(e){
   if(/^TOKEN:/.test(e.message)){s.message=e.message.replace(/^TOKEN:\s*/,'')+(config.isAdmin?'':' Pídele a Alex que registre el token.');if(config.isAdmin){s.syncing=false;draw(el);tokenDialog(el);return;}}
   else s.message=e.message;
