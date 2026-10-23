@@ -57,21 +57,22 @@ function setup(options={}){
 }
 const snapshot=()=>s?{movements:s.movements,concepts:s.concepts}:null;
 function replaceMovements(list){if(s)s.movements=list;}
+function addMovements(list){if(!s)return;const ids=new Set(list.map(m=>m.id));s.movements=[...list,...s.movements.filter(m=>!ids.has(m.id))];}
+function movementsBySource(src){return s?s.movements.filter(m=>m.source===src):[];}
+function removeMovement(id){if(s)s.movements=s.movements.filter(m=>m.id!==id);}
 const accountsInfo=()=>config?.accountsInfo?config.accountsInfo():[];
 const carLabel=v=>[v.patente||'Sin patente',v.modelo].filter(Boolean).join(' · ');
 function carIndex(){const seen={},map=new Map();s.inventory.forEach(v=>{let l=carLabel(v);if(seen[l])l+=' #'+v.id;seen[l]=1;map.set(l,v);});return map;}
 function markup(m){mode=m==='hist'?'hist':'nueva';return '<section id="oc-caja-nueva" class="oc-card"></section>';}
 function mount(parent){const el=parent.querySelector('#oc-caja-nueva');if(el&&s){draw(el);if(mode==='nueva')autoMatch(el);}}
 function conceptsFor(m){return s.concepts.filter(c=>m.direction===ENT?['INGRESO','TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].includes(c.nature):m.direction===SAL?c.nature!=='INGRESO':true);}
-function check(id){try{return JSON.parse(localStorage.getItem('oc-cuadre-'+id));}catch{return null;}}
 function accountCard(a,bl){
  if(mode==='hist'){
   const gap=a.opening===null?null:a.opening-bl.computed,pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
   return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${money(bl.computed)}</strong><small>Según lo registrado hasta el ${esc(fmtDate(start))}</small>${a.opening!==null?`<small>Saldo real al ${esc(fmtDate(start))}: <b>${money(a.opening)}</b></small><small>${gap===0?'Historia completa':'Falta reconstruir '+money(gap)}</small>`:''}${pend}</article>`;
  }
- const real=s.checks[a.id]??check(a.id),pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
- const diffText=real?(real.diff===0?`<span class="oc-chip oc-chip-ok">Cuadra · ${fmtDate(real.at)}</span>`:`<span class="oc-chip oc-chip-bad">Diferencia ${money(real.diff)} · ${fmtDate(real.at)}</span>`):'';
- return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${pend}<div class="cn-check"><input type="number" step="1" inputmode="numeric" placeholder="Saldo real hoy" data-real="${esc(a.id)}"><button type="button" data-cuadrar="${esc(a.id)}">Cuadrar</button></div>${diffText}</article>`;
+ const pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
+ return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${pend}</article>`;
 }
 function controls(m){
  const c=m.classification,list=conceptsFor(m),vehicle=c?.vehicleOperation,miss=missing(m);
@@ -131,12 +132,6 @@ function wire(el){
  el.querySelectorAll('[data-cn-tab]').forEach(b=>b.onclick=()=>{s.tab[mode]=b.dataset.cnTab;s.limit=80;draw(el);});
  const more=el.querySelector('#cn-more');if(more)more.onclick=()=>{s.limit+=100;draw(el);};
  const setupBtn=el.querySelector('#cn-setup');if(setupBtn)setupBtn.onclick=()=>setupDialog(el);
- el.querySelectorAll('[data-cuadrar]').forEach(b=>b.onclick=()=>{
-  const id=b.dataset.cuadrar,input=el.querySelector(`[data-real="${id}"]`);if(!input||input.value==='')return;
-  const a=accountsInfo().find(x=>x.id===id),b2=balances([a],s.movements,start)[id];if(b2.computed===null)return;
-  const at=new Date().toLocaleDateString('en-CA',{timeZone:'America/Santiago'}),rec={real:Number(input.value),diff:Number(input.value)-b2.computed,at};
-  s.checks[id]=rec;try{localStorage.setItem('oc-cuadre-'+id,JSON.stringify(rec));}catch{}draw(el);
- });
  el.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.dir);run(el,m,async()=>config.setDirection(m,b.dataset.v));});
  el.querySelectorAll('[data-concept]').forEach(b=>b.onchange=()=>{
   if(!b.value)return;const m=s.movements.find(x=>x.id===b.dataset.concept),c=s.concepts.find(x=>x.id===b.value);
@@ -184,5 +179,5 @@ function setupDialog(el){
   catch(err){status.textContent=err.message;}
  };
 }
-root.OCCajaNueva={...api,setup,reset,markup,mount,snapshot,replaceMovements};
+root.OCCajaNueva={...api,setup,reset,markup,mount,snapshot,replaceMovements,addMovements,movementsBySource,removeMovement};
 })(typeof globalThis==='undefined'?this:globalThis);

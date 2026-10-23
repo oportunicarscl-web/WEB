@@ -16,3 +16,10 @@ test('Atajo: rechaza monto inválido, concepto inconsistente con la dirección y
  assert.throws(()=>ctx.ocQuickValidate_(base,gasto,null,null,'2026-10-22'));
  assert.throws(()=>ctx.ocQuickValidate_({...base,requestId:'x'},gasto,{},null,'2026-10-22'));
 });
+test('Manual: valida línea, rechaza fecha futura, monto o descripción vacía',()=>{
+ const ok=ctx.ocManualValidate_({amount:5000,direction:'SALIDA',date:'2026-10-20',description:' Compra caja chica '},'2026-10-22');assert.equal(ok.description,'Compra caja chica');
+ assert.throws(()=>ctx.ocManualValidate_({amount:5000,direction:'SALIDA',date:'2026-11-20',description:'x'},'2026-10-22'));
+ assert.throws(()=>ctx.ocManualValidate_({amount:0,direction:'SALIDA',date:'2026-10-20',description:'x'},'2026-10-22'));
+ assert.throws(()=>ctx.ocManualValidate_({amount:5,direction:'SALIDA',date:'2026-10-20',description:' '},'2026-10-22'));
+ assert.equal(ctx.ocIsAdminUser_({name:' Alex '}),true);assert.equal(ctx.ocIsAdminUser_({name:'Gonzalo'}),false);
+});

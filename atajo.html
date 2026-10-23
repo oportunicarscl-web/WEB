@@ -7,43 +7,49 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Registrar">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#14231b">
+<meta name="theme-color" content="#f6efe3">
 <meta name="robots" content="noindex">
 <title>Registrar movimiento · Oportunicars</title>
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%2314231b'/%3E%3Ctext x='90' y='122' font-size='96' text-anchor='middle' fill='%23f2c14e' font-family='Arial' font-weight='700'%3E$%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%23f6efe3'/%3E%3Ctext x='90' y='122' font-size='96' text-anchor='middle' fill='%23d98324' font-family='Arial' font-weight='700'%3E$%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#f4f3ee;--ink:#14231b;--mut:#6b7468;--card:#fff;--line:#dcdacf;--acc:#14231b;--acc-ink:#fff;--in:#17794a;--out:#a8321f;--warn:#9a5b00}
-@media(prefers-color-scheme:dark){:root{--bg:#0f1712;--ink:#eef0e8;--mut:#9aa496;--card:#17221b;--line:#2a382e;--acc:#f2c14e;--acc-ink:#14231b;--in:#5fd39a;--out:#ff8a76;--warn:#f2c14e}}
+:root{--bg-1:#fff;--bg-2:#f6efe3;--ink:#3b2f21;--mut:rgba(59,47,33,.62);--line:#b4935f;--soft:rgba(180,147,95,.35);--camel:#8c6d3f;--card:rgba(255,255,255,.82);--acc:#d98324;--acc-ink:#fff;--in:#2f7d4f;--out:#b3402a;--warn:#9a5b00;--hand:'Caveat','Segoe Print','Bradley Hand',cursive;--mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:max(14px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+html{background:var(--bg-2)}
+body{margin:0;color:var(--ink);font:15px/1.4 var(--mono);min-height:100vh;padding:max(14px,env(safe-area-inset-top)) 16px max(28px,env(safe-area-inset-bottom));
+ background-color:var(--bg-2);background-image:linear-gradient(rgba(180,147,95,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(180,147,95,.10) 1px,transparent 1px),linear-gradient(rgba(180,147,95,.22) 1px,transparent 1px),linear-gradient(90deg,rgba(180,147,95,.22) 1px,transparent 1px),radial-gradient(ellipse at 36% 46%,var(--bg-1),var(--bg-2) 78%);background-size:20px 20px,20px 20px,100px 100px,100px 100px,100% 100%}
 main{max-width:520px;margin:0 auto}
-h1{font-size:1.25rem;margin:0}h2{font-size:1.35rem;margin:6px 0 14px}
-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+h1{font:600 1.7rem/1 var(--hand);margin:0;color:var(--camel)}h2{font:600 1.8rem/1.05 var(--hand);margin:4px 0 14px}
+.brand{font-size:.62rem;letter-spacing:.18em;color:var(--mut);margin:0 0 2px}
+header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;border-bottom:1px solid var(--soft);padding-bottom:8px}
 button{font:inherit;color:inherit;cursor:pointer}
-.link{background:none;border:0;color:var(--mut);padding:8px 4px;text-decoration:underline}
+.link{background:none;border:0;color:var(--mut);padding:8px 2px;text-decoration:underline;font-size:.72rem}
 .tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 2px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.68rem;line-height:1.1;text-align:center;min-height:68px}
-.tile span{font-size:1.6rem;line-height:1}
-.tile:active{transform:scale(.96)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 2px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:.62rem;line-height:1.1;text-align:center;min-height:68px;backdrop-filter:blur(4px)}
+.tile span{font-size:1.5rem;line-height:1}
+.tile:active{transform:scale(.96);border-color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px;backdrop-filter:blur(4px)}
 .opts{display:grid;gap:10px}
-.opt{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:left;font-size:1.05rem}
-.opt.sel{border:2px solid var(--acc)}
+.opt{background:var(--bg-1);border:1px solid var(--line);border-radius:6px;padding:15px;text-align:left;font:inherit;font-size:.95rem}
+.opt.sel{border:2px solid var(--acc);background:#fff7ea}
 .big{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.big .opt{text-align:center;font-weight:600;padding:26px 8px}
+.big .opt{text-align:center;font-weight:500;padding:26px 8px}
 .in{color:var(--in)}.out{color:var(--out)}
-input[type=text],input[type=search],input[type=number],input[type=date]{width:100%;font:inherit;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
-input.amount{font-size:2rem;font-weight:700;text-align:center;padding:18px}
+input[type=text],input[type=search],input[type=number],input[type=date],input[type=password]{width:100%;font:inherit;padding:13px;border-radius:6px;border:1px solid var(--line);background:var(--bg-1);color:var(--ink)}
+input:focus{outline:2px solid var(--acc);outline-offset:1px}
+input.amount{font-size:1.9rem;font-weight:500;text-align:center;padding:16px}
 .nav{display:flex;gap:10px;margin-top:16px}
-.nav button{flex:1;padding:15px;border-radius:14px;border:1px solid var(--line);background:var(--card);font-weight:600}
-.nav .primary{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.nav button{flex:1;padding:14px;border-radius:6px;border:1px solid var(--line);background:var(--bg-1);font-weight:500}
+.nav .primary,button.primary{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
 .nav button:disabled{opacity:.4}
-.steps{display:flex;gap:4px;margin-bottom:12px}.steps i{flex:1;height:4px;border-radius:2px;background:var(--line)}.steps i.on{background:var(--acc)}
-.sum{display:grid;gap:8px;margin:10px 0}.sum div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:8px 0}.sum small{color:var(--mut)}
-.msg{color:var(--warn);min-height:1.2em;margin:8px 0 0}
+.steps{display:flex;gap:4px;margin-bottom:12px}.steps i{flex:1;height:3px;border-radius:2px;background:var(--soft)}.steps i.on{background:var(--acc)}
+.sum{display:grid;gap:6px;margin:10px 0}.sum div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px dashed var(--soft);padding:8px 0}.sum small{color:var(--mut)}
+.msg{color:var(--warn);min-height:1.2em;margin:8px 0 0;font-size:.82rem}
 .ok{text-align:center;padding:30px 10px}.ok b{font-size:3rem;display:block;color:var(--in)}
 .list{max-height:46vh;overflow:auto;display:grid;gap:8px;margin-top:10px}
 small.m{color:var(--mut)}
+.foot{text-align:center;margin-top:18px}
 </style>
 </head>
 <body>
@@ -51,7 +57,11 @@ small.m{color:var(--mut)}
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.102.0';
 const ENDPOINT='https://script.google.com/macros/s/AKfycbypxLeRAH7PNQCAfYV14_V_cSbp5soxaX07vxDbyt8HV8efn1W7cPIKXR_XMut6cz-k/exec';
-const client=createClient('https://lxyqosqgvkgjybgffdob.supabase.co','sb_publishable_1J_TfuzcCqaqtDVDIaiLAw_uCufZXHC',{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+const client=createClient('https://lxyqosqgvkgjybgffdob.supabase.co','sb_publishable_1J_TfuzcCqaqtDVDIaiLAw_uCufZXHC',{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:'oc-atajo-auth'}});
+// La primera vez en cada teléfono pide usuario y clave; después la sesión dura hasta 60 días sin volver a entrar.
+const SESSION_DAYS=60,STAMP='oc-atajo-since';
+const stamp=()=>{try{return Number(localStorage.getItem(STAMP))||0;}catch{return 0;}};
+const expired=()=>Date.now()-stamp()>SESSION_DAYS*86400000;
 const $=id=>document.getElementById(id),app=$('app');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}).format(n||0);
@@ -78,7 +88,7 @@ const order=()=>['direction','concept',...(needsCar()?['car']:[]),'amount','acco
 const answered=k=>({direction:!!form.direction,concept:form.conceptSet,car:form.vehicleSet,amount:Number(form.amount)>0,account:!!form.accountId,review:false}[k]);
 function save(){try{localStorage.setItem('oc-atajo-data',JSON.stringify(data));}catch{}}
 async function call(action,payload={}){
- const {data:s}=await client.auth.getSession();if(!s.session)throw Error('SIN_SESION');token=s.session.access_token;
+ const {data:s}=await client.auth.getSession();if(!s.session||!stamp()||expired()){if(s.session)await client.auth.signOut();throw Error('SIN_SESION');}token=s.session.access_token;
  const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action,token}),credentials:'omit',redirect:'follow',referrerPolicy:'no-referrer'});
  const j=await r.json();if(!j.ok)throw Error(j.error||'No se pudo guardar.');return j.data;
 }
@@ -93,15 +103,16 @@ function pickTile(t){
  // Directo a lo que falta: auto (si es de auto) → monto.
  const o=order();step=!form.direction?'direction':!form.conceptSet?'concept':needsCar()?'car':'amount';render();
 }
-function header(title){return `<header><h1>${esc(title)}</h1><button class="link" id="again">Borrar y empezar de nuevo</button></header>`;}
+function header(title){return `<header><div><p class="brand">OPORTUNICARS · CAJA</p><h1>${esc(title)}</h1></div><button class="link" id="again">Borrar y empezar de nuevo</button></header>`;}
 function bar(){const o=order(),i=o.indexOf(step);return `<div class="steps">${o.map((k,j)=>`<i class="${j<=i?'on':''}"></i>`).join('')}</div>`;}
 function nav(canNext,label){return `<div class="nav"><button id="back">← Atrás</button><button id="next" class="primary" ${canNext?'':'disabled'}>${label||'Siguiente →'}</button></div><p class="msg">${esc(msg)}</p>`;}
 function render(){
  if(!data){app.innerHTML='<p>Cargando…</p>';return;}
  if(done){app.innerHTML=`<div class="card ok"><b>✓</b><h2>Guardado</h2><p>${esc(done)}</p><div class="nav"><button class="primary" id="newone">Registrar otro</button></div></div>`;$('newone').onclick=reset;return;}
  if(step==='home'){
-  app.innerHTML=`<header><h1>Registrar movimiento</h1></header><div class="tiles">${TILES.map((t,i)=>`<button class="tile" data-t="${i}"><span>${t.icon}</span>${esc(t.label)}</button>`).join('')}</div><div class="card"><p style="margin:0 0 12px">¿Entró o salió dinero?</p><div class="big"><button class="opt in" data-d="ENTRADA">⬇ Entró</button><button class="opt out" data-d="SALIDA">⬆ Salió</button></div></div>`;
+  app.innerHTML=`<header><div><p class="brand">OPORTUNICARS · CAJA</p><h1>Registrar movimiento</h1></div></header><div class="tiles">${TILES.map((t,i)=>`<button class="tile" data-t="${i}"><span>${t.icon}</span>${esc(t.label)}</button>`).join('')}</div><div class="card"><p style="margin:0 0 12px">¿Entró o salió dinero?</p><div class="big"><button class="opt in" data-d="ENTRADA">⬇ Entró</button><button class="opt out" data-d="SALIDA">⬆ Salió</button></div></div><p class="foot"><button class="link" id="out">Cerrar sesión</button></p>`;
   app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>pickTile(TILES[b.dataset.t]));
+  $('out').onclick=async()=>{await client.auth.signOut();try{localStorage.removeItem(STAMP);}catch{}location.reload();};
   app.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{form=blank();form.date=data.today;form.direction=b.dataset.d;step='concept';render();});
   return;
  }
@@ -150,8 +161,8 @@ async function submit(){
  busy=false;render();
 }
 function loginView(err=''){
- app.innerHTML=`<div class="card"><h2>Inicia sesión</h2><p><small class="m">Solo la primera vez en este teléfono.</small></p><form id="lf" style="display:grid;gap:10px"><input type="text" id="em" inputmode="email" autocomplete="username" autocapitalize="none" placeholder="Correo"><input type="password" id="pw" autocomplete="current-password" placeholder="Contraseña" style="width:100%;font:inherit;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)"><button class="opt sel" type="submit">Entrar</button></form><p class="msg">${esc(err)}</p></div>`;
- $('lf').onsubmit=async e=>{e.preventDefault();const {error}=await client.auth.signInWithPassword({email:$('em').value.trim(),password:$('pw').value});if(error)return loginView('Correo o contraseña incorrectos.');location.reload();};
+ app.innerHTML=`<div class="card"><h2>Inicia sesión</h2><p><small class="m">Solo la primera vez en este teléfono; después queda abierta hasta 60 días.</small></p><form id="lf" style="display:grid;gap:10px"><input type="text" id="em" inputmode="email" autocomplete="username" autocapitalize="none" placeholder="Correo"><input type="password" id="pw" autocomplete="current-password" placeholder="Contraseña" style="width:100%;font:inherit;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)"><button class="opt sel" type="submit">Entrar</button></form><p class="msg">${esc(err)}</p></div>`;
+ $('lf').onsubmit=async e=>{e.preventDefault();const {error}=await client.auth.signInWithPassword({email:$('em').value.trim(),password:$('pw').value});if(error)return loginView('Correo o contraseña incorrectos.');try{localStorage.setItem(STAMP,String(Date.now()));}catch{}location.reload();};
 }
 (async()=>{
  try{const c=JSON.parse(localStorage.getItem('oc-atajo-data'));if(c&&c.concepts){data=c;reset();}}catch{}

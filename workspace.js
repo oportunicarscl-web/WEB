@@ -33,10 +33,10 @@
   if (!root.document) return;
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const label=v=>v.toLowerCase().replaceAll('_',' ').replace(/^./,s=>s.toUpperCase());
-  let host,session=null,role=null,view='',table='',query='',preview=false;
+  let host,session=null,role=null,view='',table='',query='',preview=false,admin=false;
   function node(html) { const t=document.createElement('template');t.innerHTML=html;return t.content; }
   function close() {
-    root.OCCaja?.reset();root.OCCajaNueva?.reset();
+    root.OCCaja?.reset();root.OCCajaNueva?.reset();root.OCAdmin?.reset();admin=false;
     host?.remove();host=null;session=null;role=null;query='';table='';
     document.body.classList.remove('workspace-open');
     document.title='Oportunicars · Acceso';
@@ -46,6 +46,9 @@
     const cut=options.caja?.cashStart||'2026-10-15';
     root.OCCaja?.setup({preview,userId:options.user?.id,...options.caja,historic:true,keep:m=>!m.date||m.date<=cut});
     root.OCCajaNueva?.setup({preview,...options.caja,cashStart:cut});
+    // Solo el usuario Alex administra movimientos a mano (el servidor lo vuelve a comprobar).
+    admin=!preview&&(String(options.profile?.name||'').trim().toLowerCase()==='alex'||String(options.user?.app_metadata?.oc_username||'').trim().toLowerCase()==='alex');
+    if(admin)root.OCAdmin?.setup({...options.caja});
     root.OCSistema?.setup({...options.system,canManage:options.profile?.manage});
     role=preview?resolveRole(options.user):(Object.hasOwn(roles,options.profile?.role)?options.profile.role:null);view=role?roles[role].home:'pendiente';
     host=document.createElement('div');host.id='oc-workspace';
@@ -53,23 +56,24 @@
     render();
   }
   // Por ahora solo Caja y bancos y Autos y operación están activas; el resto se ve en el menú pero no carga ni cambia la vista.
-  const active=['finanzas','historica','operaciones'];
+  const active=['finanzas','historica','operaciones','gerencial','operacional','analitica','administrar'];
   function navigate(next) {
     if(!active.includes(next))return;
-    if (!['operacional','gerencial','pendiente'].includes(next)&&!canAccess(role,next)) return;
+    if(next==='administrar'){if(!admin)return;}
+    else if (!['operacional','gerencial','pendiente'].includes(next)&&!canAccess(role,next)) return;
     if(next==='gerencial'&&!['gerencial','administrador','finanzas'].includes(role))return;
     // Las vistas se dibujan con los datos ya cargados: navegar no consulta a Google.
     view=next;table='';query='';render();
   }
   function render() {
     const name=session.profile?.name || session.user.app_metadata?.oc_username || session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuario';
-    const title=view==='gerencial'?'Resumen gerencial':view==='operacional'?'Resumen operacional':view==='pendiente'?'Acceso pendiente':areas.find(a=>a.id===view)?.name;
+    const title=view==='gerencial'?'Resumen gerencial':view==='operacional'?'Resumen operacional':view==='pendiente'?'Acceso pendiente':view==='administrar'?'Administrar':areas.find(a=>a.id===view)?.name;
     document.title=title+' · Oportunicars';
     host.replaceChildren(node(`
       <aside class="oc-sidebar"><a class="oc-brand" href="#" aria-label="Inicio Oportunicars"><b>oportuni<span>cars</span></b><small>GESTIÓN DEL NEGOCIO</small></a>
       <div class="oc-profile"><span class="oc-avatar">${esc(String(name).slice(0,2).toUpperCase())}</span><div><strong>${esc(name)}</strong><small>${role?roles[role].label:'Perfil por asignar'}</small></div></div>
       <nav aria-label="Áreas">${role?'<p class="oc-nav-label">TU ESPACIO</p>'+nav(['gerencial','administrador','finanzas'].includes(role)?'gerencial':'operacional','Resumen')+(['gerencial','administrador'].includes(role)?nav('operacional','Seguimiento operacional'):'')+
-      '<p class="oc-nav-label">ÁREAS DE TRABAJO</p>'+areas.filter(a=>canAccess(role,a.id)).map(a=>nav(a.id,a.name)).join(''):''}</nav>
+      '<p class="oc-nav-label">ÁREAS DE TRABAJO</p>'+areas.filter(a=>canAccess(role,a.id)).map(a=>nav(a.id,a.name)).join('')+(admin?nav('administrar','Administrar'):''):''}</nav>
       <div class="oc-sidebar-bottom"><small>${preview?'VISTA PREVIA · SIN SESIÓN REAL':'Oportunicars · Sistema de Gestión'}</small><button id="oc-signout">Cerrar sesión</button></div></aside>
       <main class="oc-main"><header class="oc-header"><div><p class="oc-eyebrow">OPORTUNICARS / ${role?roles[role].label.toUpperCase():'ACCESO'}</p><h1 tabindex="-1">${title}</h1></div><span class="oc-status">${session.caja?.connected?'Google conectado':'Conexión de datos pendiente'}</span></header>
       ${preview?'<div class="oc-preview">Vista previa de diseño. Perfil de prueba; sin acceso a cuentas ni datos reales.</div>':''}
@@ -83,7 +87,7 @@
     const search=host.querySelector('#oc-search');
     if(search)search.oninput=()=>{query=search.value;renderTables();};
     host.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>showFields(b.dataset.detail));
-    root.OCCaja?.mount(host);root.OCCajaNueva?.mount(host);
+    root.OCCaja?.mount(host);root.OCCajaNueva?.mount(host);root.OCAdmin?.mount(host);
     root.OCSistema?.mount(host);
 
   }
@@ -91,6 +95,7 @@
   function pending(){if(session.connectionError)return '<section class="oc-empty"><h2>Conexión con Google pendiente</h2><p>'+esc(session.connectionError)+'</p><p>Tu sesión de acceso está verificada.</p></section>';return '<section class="oc-empty"><span class="oc-empty-icon">○</span><h2>Tu cuenta está verificada</h2><p>Falta que el administrador asigne tu perfil de trabajo. Una vez asignado, entra nuevamente para ver tu resumen y tus áreas.</p><p>No necesitas crear otra cuenta.</p></section>';}
   function summary(){return root.OCSistema?root.OCSistema.markup(view==='gerencial'?'analitica':'resumen'):pending();}
   function moduleView(){
+    if(view==='administrar')return admin&&root.OCAdmin?root.OCAdmin.markup():pending();
     if(!canAccess(role,view))return pending();
     if(view==='finanzas'&&root.OCCajaNueva)return root.OCCajaNueva.markup('nueva');
     if(view==='historica'&&root.OCCajaNueva)return root.OCCajaNueva.markup('hist');

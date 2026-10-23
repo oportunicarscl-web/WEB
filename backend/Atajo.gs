@@ -10,6 +10,8 @@ function ocExtra_(p,actor){
  if(p.action==='quick')return ocQuick_(p,actor);
  if(p.action==='quickMatch')return ocQuickMatch_(p,actor);
  if(p.action==='unassign')return ocUnassign_(p,actor);
+ if(p.action==='manualAdd')return ocManualAdd_(p,actor);
+ if(p.action==='manualVoid')return ocManualVoid_(p,actor);
  return undefined;
 }
 function ocToday_(){return Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd');}
@@ -97,4 +99,47 @@ function fijarSaldosIniciales(){
   out.push(nombre+': '+monto);
  });
  console.log(JSON.stringify(out));
+}
+
+// ---- Administrar: movimientos a mano (respaldo de las importaciones automáticas). Solo el usuario Alex. ----
+function ocIsAdminUser_(actor){return String(actor&&actor.name||'').trim().toLowerCase()==='alex';}
+// Validación pura de una línea manual (probada en tests).
+function ocManualValidate_(r,today){
+ const amount=Number(r.amount);if(!Number.isSafeInteger(amount)||amount<=0||amount>10000000000)throw Error('Monto inválido.');
+ if(['ENTRADA','SALIDA'].indexOf(r.direction)<0)throw Error('Indica si entró o salió dinero.');
+ const date=String(r.date||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(Date.parse(date))||date>today||date<'2024-01-01')throw Error('Fecha inválida: '+date);
+ const description=String(r.description||'').trim().slice(0,200);if(!description)throw Error('Falta la descripción.');
+ return {amount:amount,direction:r.direction,date:date,description:description};
+}
+function ocManualAdd_(p,actor){
+ if(!ocIsAdminUser_(actor))throw Error('Solo el administrador de la caja puede registrar movimientos a mano.');
+ if(!/^[-\w]{8,60}$/.test(String(p.requestId||'')))throw Error('Solicitud inválida.');
+ if(!Array.isArray(p.rows)||!p.rows.length||p.rows.length>60)throw Error('Envía entre 1 y 60 movimientos.');
+ const maestros='OC_MAESTROS_ID',fin=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),today=ocToday_();
+ const accounts=ocTable_(maestros,'CUENTAS_FINANCIERAS').rows.filter(a=>a.cuenta_id===p.accountId&&ocProd_(a));if(accounts.length!==1)throw Error('Cuenta no encontrada.');
+ const concepts=ocTable_(maestros,'CONCEPTOS_CAJA').rows.filter(c=>c.habilitado==='SI'),cars=ocTable_(maestros,'VEHICULOS').rows.filter(ocProd_);
+ const out=[],now=new Date().toISOString();
+ const prepared=p.rows.map((r,i)=>{
+  const q=ocManualValidate_(r,today);let C=null,car='';
+  if(r.conceptId){const m=concepts.filter(c=>c.concepto_id===r.conceptId);if(m.length!==1)throw Error('Concepto no disponible en la línea '+(i+1)+'.');C=ocConcept_(m[0]);
+   if(q.direction==='ENTRADA'&&['GASTO','COSTO'].indexOf(C.nature)>=0||q.direction==='SALIDA'&&C.nature==='INGRESO')throw Error('El concepto no corresponde a la dirección en la línea '+(i+1)+'.');
+   if(C.vehicleOperation&&r.vehicleId){if(cars.filter(v=>String(v.vehiculo_id)===String(r.vehicleId)).length!==1)throw Error('Auto no encontrado en la línea '+(i+1)+'.');car=String(r.vehicleId);}}
+  return {q:q,C:C,car:car,id:'MAN-'+osHash_('manual|'+p.requestId+'|'+i).slice(0,24)};
+ });
+ prepared.forEach(x=>{
+  const ex=fin.rows.filter(r=>r.movimiento_id===x.id);if(ex.length){out.push(ocSlimMov_(ex[0]));return;}
+  const C=x.C||{id:'',name:'',version:'',category:'',nature:'',cost:'',recurring:false,vehicleOperation:''};
+  const row={movimiento_id:x.id,cuenta_id:String(p.accountId),fecha_operacion:x.q.date,moneda:'CLP',direccion:x.q.direction,monto:x.q.amount,descripcion:x.q.description,hash_origen:'MANUAL|'+x.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'MANUAL',calidad:'CONFIRMADO',version:1,created_at:now,created_by:actor.id,updated_at:now,updated_by:actor.id,
+   monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:'manual',estado_importacion:'MANUAL',concepto_id:C.id,concepto_nombre:C.name,concepto_version:C.version,categoria:C.category,naturaleza:C.nature,tipo_costo:C.cost,recurrente:x.C?(C.recurring?'SI':'NO'):'',operacion_auto:C.vehicleOperation,vehiculo_id:x.car,estado_clasificacion:!x.C?'PENDIENTE':C.vehicleOperation&&!x.car?'POR_ASIGNAR_AUTO':'CLASIFICADO'};
+  ocPatchRow_(fin,fin.sheet.getLastRow()+1,row);fin.rows.push(row);out.push(ocSlimMov_(row));
+ });
+ if(typeof osAudit_==='function')osAudit_(actor,'MOVIMIENTOS_MANUALES','MOVIMIENTOS_BANCARIOS',String(p.requestId),{cuenta:p.accountId,cantidad:out.length});
+ return out;
+}
+function ocManualVoid_(p,actor){
+ if(!ocIsAdminUser_(actor))throw Error('Solo el administrador de la caja puede anular movimientos manuales.');
+ const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),r=ocMovRow_(t,p.id);
+ if(r.estado_importacion!=='MANUAL')throw Error('Solo se anulan movimientos ingresados a mano.');
+ if(typeof osAudit_==='function')osAudit_(actor,'ANULAR_MANUAL','MOVIMIENTOS_BANCARIOS',p.id,{monto:r.monto,descripcion:r.descripcion});
+ ocPatchRow_(t,r._row,ocBump_(r,actor,{estado_registro:'ANULADO'}));return {id:p.id};
 }
