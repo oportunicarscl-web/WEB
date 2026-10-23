@@ -123,10 +123,11 @@ function osMpStart_(){
  const cuenta=osMpAccount_(),fin=osMpFin_(),begin=osMpBegin_(fin,cuenta),me=osMpMeId_();
  const events=osMpSearchRange_(begin+'T00:00:00.000-03:00').map(p=>osMpPaymentEvent_(p,me)).filter(Boolean);
  const r=osMpApply_(fin,cuenta,events);
- let reportId='';
+ let reportId='',reportWarn='';
  try{const b=osMpFetch_('/v1/account/release_report',{method:'post',contentType:'application/json',payload:JSON.stringify({begin_date:begin+'T03:00:00Z',end_date:new Date().toISOString()})});
-  if(b.getResponseCode()===202){const j=JSON.parse(b.getContentText());reportId=String(j.id||'');osMpSet_('OC_MP_REPORT_REQ',JSON.stringify({id:reportId,at:Date.now(),begin:begin}));}}catch(e){if(/^TOKEN/.test(e.message))throw e;}
- return {fase:reportId?'reporte_pendiente':'listo',desde:begin,agregados:r.agregados,completados:r.completados,pagosRevisados:events.length,avisos:r.fallidos?['No pude completar '+r.fallidos+' filas antiguas: '+r.error]:[]};
+  if(b.getResponseCode()===202){const j=JSON.parse(b.getContentText());reportId=String(j.id||'');osMpSet_('OC_MP_REPORT_REQ',JSON.stringify({id:reportId,at:Date.now(),begin:begin}));}
+  else reportWarn='Mercado Pago no aceptó pedir el reporte de saldo (HTTP '+b.getResponseCode()+'): '+String(b.getContentText()).slice(0,160);}catch(e){if(/^TOKEN/.test(e.message))throw e;reportWarn='No pude pedir el reporte de saldo: '+String(e.message).slice(0,160);}
+ return {fase:reportId?'reporte_pendiente':'listo',desde:begin,agregados:r.agregados,completados:r.completados,pagosRevisados:events.length,avisos:(r.fallidos?['No pude completar '+r.fallidos+' filas antiguas: '+r.error]:[]).concat(reportWarn?[reportWarn]:[])};
 }
 function osMpCheck_(){
  const cuenta=osMpAccount_(),fin=osMpFin_();let req;try{req=JSON.parse(osMpProp_('OC_MP_REPORT_REQ')||'null');}catch(e){req=null;}

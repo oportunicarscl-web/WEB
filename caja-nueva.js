@@ -66,8 +66,9 @@ function carIndex(){const seen={},map=new Map();s.inventory.forEach(v=>{let l=ca
 function markup(m){mode=m==='hist'?'hist':'nueva';return '<section id="oc-caja-nueva" class="oc-card"></section>';}
 function mount(parent){const el=parent.querySelector('#oc-caja-nueva');if(el&&s){draw(el);if(mode==='nueva')autoMatch(el);}}
 function conceptsFor(m){return s.concepts.filter(c=>m.direction===ENT?['INGRESO','TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].includes(c.nature):m.direction===SAL?c.nature!=='INGRESO':true);}
+const realMp=a=>s&&s.mpBalance&&/mercado/i.test(a.name)?Number(s.mpBalance.saldo):null;
 function totalLine(infos,bal){
- const known=infos.filter(a=>bal[a.id]&&bal[a.id].computed!==null),total=known.reduce((t,a)=>t+bal[a.id].computed,0);
+ const known=infos.filter(a=>bal[a.id]&&bal[a.id].computed!==null),total=known.reduce((t,a)=>t+(realMp(a)??bal[a.id].computed),0);
  const sync=config.syncMercadoPago?`<button id="cn-mp" class="cn-sync${s.syncing?' spin':''}" title="Actualizar Mercado Pago" aria-label="Actualizar Mercado Pago" ${s.syncing?'disabled':''}>⟳</button>`:'';
  const mpBal=s.mpBalance?`<small>Saldo según Mercado Pago: ${money(s.mpBalance.saldo)} (${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))})</small>`:'';
  return `<p class="cn-total"><small>Saldo total</small> <strong>${known.length?money(total):'—'}</strong> ${sync} ${mpBal}</p>`;
@@ -103,7 +104,7 @@ function accountCard(a,bl){
   return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${money(bl.computed)}</strong><small>Según lo registrado hasta el ${esc(fmtDate(start))}</small>${a.opening!==null?`<small>Saldo real al ${esc(fmtDate(start))}: <b>${money(a.opening)}</b></small><small>${gap===0?'Historia completa':'Falta reconstruir '+money(gap)}</small>`:''}${pend}</article>`;
  }
  const pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
- return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${pend}${s.mpBalance&&/mercado/i.test(a.name)?`<small>Real en Mercado Pago: <b>${money(s.mpBalance.saldo)}</b></small>`:''}</article>`;
+ return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${realMp(a)!==null?money(realMp(a)):bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${realMp(a)!==null?`<small>Saldo real de Mercado Pago al ${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))} · según lo clasificado ${bl.computed===null?'—':money(bl.computed)}</small>`:''}${pend}</article>`;
 }
 function controls(m){
  const c=m.classification,list=conceptsFor(m),vehicle=c?.vehicleOperation,miss=missing(m);
