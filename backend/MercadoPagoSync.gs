@@ -82,7 +82,7 @@ function osMpLastDay_(fin,cuenta){
 }
 // Escribe una fila nueva; si la hoja rechaza algún valor por su catálogo (validación de datos), reintenta sin los campos opcionales.
 function osMpWrite_(fin,row){
- const drops=[[],['tipo_fuente'],['tipo_fuente','estado_fuente','calidad','lote_importacion_id','estado_conciliacion']];let last;
+ const drops=[[],['tipo_fuente'],['tipo_fuente','referencia'],['tipo_fuente','estado_fuente','calidad','lote_importacion_id','estado_conciliacion']];let last;
  for(let i=0;i<drops.length;i++){
   const r=Object.assign({},row);drops[i].forEach(k=>{if(fin.headers.indexOf(k)>=0)r[k]='';else delete r[k];});
   Object.keys(r).forEach(k=>{if(fin.headers.indexOf(k)<0)delete r[k];});
@@ -100,7 +100,7 @@ function osMpApply_(fin,cuenta,events){
    if(Object.keys(patch).length&&out.completados<300){patch.version=Number(ex.version||1)+1;patch.updated_at=now;patch.updated_by='MERCADO_PAGO_API';try{ocPatchRow_(fin,ex._row,patch);Object.assign(ex,patch);out.completados++;}catch(err){out.fallidos=(out.fallidos||0)+1;out.error=String(err.message);}}
    return;
   }
-  const row={movimiento_id:'MP-'+e.id,cuenta_id:cuenta,fecha_operacion:e.fecha,moneda:'CLP',direccion:e.direccion,monto:e.monto,descripcion:e.descripcion,referencia:e.id,hash_origen:'MP|'+e.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'IMPORTACION',calidad:'CONFIRMADO',version:1,created_at:now,created_by:'MERCADO_PAGO_API',updated_at:now,updated_by:'MERCADO_PAGO_API',monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:e.tipo_fuente,estado_fuente:'approved',operacion_origen_id:e.id,fecha_original:e.iso,estado_importacion:'CONFIRMADO',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',lote_importacion_id:'MP-API'};
+  const row={movimiento_id:'MP-'+e.id,cuenta_id:cuenta,fecha_operacion:e.fecha,moneda:'CLP',direccion:e.direccion,monto:e.monto,descripcion:e.descripcion,referencia:'MP-'+e.id,hash_origen:'MP|'+e.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'IMPORTACION',calidad:'CONFIRMADO',version:1,created_at:now,created_by:'MERCADO_PAGO_API',updated_at:now,updated_by:'MERCADO_PAGO_API',monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:e.tipo_fuente,estado_fuente:'approved',operacion_origen_id:e.id,fecha_original:e.iso,estado_importacion:'CONFIRMADO',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',lote_importacion_id:'MP-API'};
   osMpWrite_(fin,row);fin.rows.push(row);idx[e.id]=row;out.agregados++;
  });
  return out;
