@@ -16,6 +16,8 @@
  // Dirección sugerida por el tipo de operación cuando la fuente no la trae. Se confirma al clasificar.
  function inferDirection(r){
   const type=String(r.tipo_fuente||'').toLowerCase(),text=String(r.descripcion||'');
+  if(/^(por liberar · )?(dinero recibido|transferencia recibida|cobro con tarjeta)/i.test(text))return 'ENTRADA';
+  if(/^(por liberar · )?(pago o transferencia enviada|compra |retiro desde mercado pago)/i.test(text))return 'SALIDA';
   if(type==='account_fund'||type==='pos_payment')return 'ENTRADA';
   if(type==='regular_payment')return /link/i.test(text)?'ENTRADA':'SALIDA';
   return '';
@@ -91,6 +93,7 @@
    async saveConcept(concept){return call('concept',{concept});},
    async saveMovement(m){let version=m.version;if(m.directionInferred&&['ENTRADA','SALIDA'].includes(m.direction)){const d=await call('setDirection',{id:m.id,direction:m.direction,expectedVersion:version});version=Number(d.version||version+1);}
     const saved=await call('classify',{id:m.id,expectedVersion:version,conceptId:m.classification.id,conceptVersion:m.classification.version,vehicleId:m.classification.vehicleId,activityId:m.activityId||'',forecastId:m.forecastId||'',prestamoId:m.prestamoId||'',loanComponent:m.loanComponent||'',socio:m.socio||''});saved.date=saved.date||m.date;saved.directionInferred=false;store.applySaved(saved);return saved;},
+   async flipDirection(m,direction){return call('flipDirection',{id:m.id,direction,expectedVersion:m.version});},
    async setDirection(m,direction){const d=await call('setDirection',{id:m.id,direction,expectedVersion:m.version});store.applySaved({...m,direction,version:Number(d.version||m.version+1),directionInferred:false});return {...m,direction,version:Number(d.version||m.version+1),directionInferred:false};},
    hiddenCount:store.hiddenCount,cashStart:CASH_START,accountsInfo:store.accountsInfo,
    async saveBalance(id,balance,date,version){return store.saveBalance(id,balance,date,version);},

@@ -10,6 +10,7 @@ function ocExtra_(p,actor){
  if(p.action==='quick')return ocQuick_(p,actor);
  if(p.action==='quickMatch')return ocQuickMatch_(p,actor);
  if(p.action==='unassign')return ocUnassign_(p,actor);
+ if(p.action==='flipDirection')return ocFlipDirection_(p,actor);
  if(p.action==='manualAdd')return ocManualAdd_(p,actor);
  if(p.action==='manualVoid')return ocManualVoid_(p,actor);
  if(p.action==='syncMercadoPago')return osMpSync_(p,actor);
@@ -89,6 +90,19 @@ function ocUnassign_(p,actor){
  const patch=ocBump_(r,actor,clear);
  if(typeof osAudit_==='function')osAudit_(actor,'DESHACER_ASIGNACION','MOVIMIENTOS_BANCARIOS',p.id,before);
  ocPatchRow_(t,r._row,patch);return {version:patch.version};
+}
+// Cambio manual de ingreso/egreso (rueda de cada movimiento). Si el concepto asignado ya no corresponde, se deshace la asignación.
+function ocFlipDirection_(p,actor){
+ if(['ENTRADA','SALIDA'].indexOf(p.direction)<0)throw Error('Selecciona ingreso o egreso.');
+ const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),r=ocMovRow_(t,p.id);
+ if(Number(r.version||1)!==p.expectedVersion)throw Error('El movimiento cambió. Recarga antes de guardar.');
+ if(r.estado_importacion==='ATAJO')throw Error('Un registro rápido no se cambia aquí.');
+ if(r.direccion===p.direction)return {version:Number(r.version||1),direction:p.direction};
+ const nat=String(r.naturaleza||''),choca=!!r.concepto_id&&(p.direction==='ENTRADA'&&['COSTO','GASTO'].indexOf(nat)>=0||p.direction==='SALIDA'&&nat==='INGRESO');
+ const clear=choca?{concepto_id:'',concepto_nombre:'',concepto_version:'',categoria:'',naturaleza:'',tipo_costo:'',recurrente:'',operacion_auto:'',vehiculo_id:'',estado_clasificacion:'PENDIENTE',actividad_id:'',proyeccion_id:'',prestamo_id:'',componente_prestamo:'',socio:'',aporte_id:'',monto_confirmado:'NO',incluir_en_saldo:'NO'}:{};
+ const patch=ocBump_(r,actor,Object.assign({direccion:p.direction},clear));
+ if(typeof osAudit_==='function')osAudit_(actor,'CAMBIAR_DIRECCION','MOVIMIENTOS_BANCARIOS',p.id,{antes:r.direccion,despues:p.direction,concepto_deshecho:choca?r.concepto_id:''});
+ ocPatchRow_(t,r._row,patch);return {version:patch.version,direction:p.direction,desclasificado:choca};
 }
 // Saldos iniciales de la caja cuadrada: se fijan UNA vez y no se vuelven a modificar (solo se escriben si la cuenta no tiene saldo).
 function fijarSaldosIniciales(){

@@ -61,3 +61,8 @@ test('Mercado Pago: fecha, dirección sugerida y operaciones no efectivas', () =
  assert.equal(g.mapMovement({movimiento_id:'x',cuenta_id:'A',tipo_fuente:'money_transfer'},{}).direction,'');
  assert.equal(g.effective({estado_fuente:'rejected'}),false);assert.equal(g.effective({estado_fuente:'authorized'}),false);assert.equal(g.effective({estado_fuente:'approved'}),true);
 });
+
+{const assert=require('assert');global.window=global;require('../google-caja.js');const G=global.OCGoogleCaja;
+ assert.strictEqual(G.inferDirection({tipo_fuente:'regular_payment',descripcion:'Dinero recibido en Mercado Pago'}),'ENTRADA');
+ assert.strictEqual(G.inferDirection({tipo_fuente:'regular_payment',descripcion:'Por liberar · Compra Entel'}),'SALIDA');
+ console.log('ok inferencia por descripción MP');}

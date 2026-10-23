@@ -78,9 +78,9 @@ function mount(parent){const el=parent.querySelector('#oc-caja-nueva');if(el&&s)
 function conceptsFor(m){return s.concepts.filter(c=>m.direction===ENT?['INGRESO','TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].includes(c.nature):m.direction===SAL?c.nature!=='INGRESO':true);}
 const realMp=a=>s&&s.mpBalance&&/mercado/i.test(a.name)?Number(s.mpBalance.saldo):null;
 function totalLine(infos,bal){
- const known=infos.filter(a=>bal[a.id]&&bal[a.id].computed!==null),total=known.reduce((t,a)=>t+(realMp(a)??bal[a.id].computed),0);
+ const shown=a=>/mercado/i.test(a.name)?(movementBalance(a,s.movements,start)||{}).value:bal[a.id]&&bal[a.id].computed,known=infos.filter(a=>shown(a)!==null&&shown(a)!==undefined),total=known.reduce((t,a)=>t+shown(a),0);
  const sync=config.syncMercadoPago?`<button id="cn-mp" class="cn-sync${s.syncing?' spin':''}" title="Actualizar Mercado Pago" aria-label="Actualizar Mercado Pago" ${s.syncing?'disabled':''}>⟳</button>`:'';
- const mpBal=s.mpBalance?`<small>Saldo según Mercado Pago: ${money(s.mpBalance.saldo)} (${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))} ${esc(String(s.mpBalance.at||'').slice(11,16))})</small>`:'';
+ const mpBal=s.mpBalance&&s.mpBalance.at?`<small>${esc(fmtDate(String(s.mpBalance.at).slice(0,10)))} ${esc(String(s.mpBalance.at).slice(11,16))}</small>`:'';
  return `<p class="cn-total"><small>Saldo total</small> <strong>${known.length?money(total):'—'}</strong> ${sync} ${mpBal}</p>`;
 }
 async function syncMp(el){
@@ -119,6 +119,7 @@ function accountCard(a,bl){
   const gap=a.opening===null?null:a.opening-bl.computed,pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
   return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${money(bl.computed)}</strong><small>Según lo registrado hasta el ${esc(fmtDate(start))}</small>${a.opening!==null?`<small>Saldo real al ${esc(fmtDate(start))}: <b>${money(a.opening)}</b></small><small>${gap===0?'Historia completa':'Falta reconstruir '+money(gap)}</small>`:''}${pend}</article>`;
  }
+ if(/mercado/i.test(a.name)){const mb=movementBalance(a,s.movements,start),real=realMp(a);return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${mb?money(mb.value):'Sin saldo inicial'}</strong>${real!==null?`<small class="cn-mp-real${mb&&mb.value===real?' cn-ok':''}">${money(real)}</small>`:''}</article>`;}
  const pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
  return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${realMp(a)!==null?money(realMp(a)):bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${realMp(a)!==null?`<small>Saldo real de Mercado Pago al ${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))} ${esc(String(s.mpBalance.at||'').slice(11,16))} · según lo clasificado ${bl.computed===null?'—':money(bl.computed)}</small>`:''}${pend}${movLine(a)}</article>`;
 }
@@ -131,6 +132,10 @@ function controls(m){
   (miss.length===1&&miss[0]==='Importe'?`<button data-confirm="${m.id}">Importe correcto</button>`:'')+
   (c||m.confirmed?`<button data-unassign="${m.id}" class="cn-undo">Deshacer asignación</button>`:'')+'</div>';
 }
+function gear(m){
+ const open=s.gear===m.id;
+ return `<div class="cn-gearbox"><button class="cn-gear" data-gear="${m.id}" title="Cambiar ingreso/egreso" aria-label="Cambiar ingreso o egreso">⚙</button>${open?`<span class="cn-flip"><button data-flip="${m.id}" data-v="${ENT}"${m.direction===ENT&&!m.directionInferred?' disabled':''}>Es ingreso</button><button data-flip="${m.id}" data-v="${SAL}"${m.direction===SAL&&!m.directionInferred?' disabled':''}>Es egreso</button></span>`:''}</div>`;
+}
 function rowMarkup(m,bl,tab){
  const tone=m.direction===ENT&&!m.directionInferred?'oc-in':m.direction===SAL&&!m.directionInferred?'oc-out':'oc-unknown',miss=missing(m);
  const sign=m.direction===SAL?'−':m.direction===ENT?'+':'';
@@ -138,7 +143,7 @@ function rowMarkup(m,bl,tab){
  const right=quick?'':open?controls(m):`<div class="cn-controls"><button data-edit="${m.id}" class="cn-edit">Corregir</button></div>`;
  const run=tab==='movimientos'&&bl?.running[m.id]!==undefined?`<small class="cn-run">Saldo ${money(bl.running[m.id])}</small>`:'';
  const tag=quick?'<span class="oc-chip oc-chip-warn">Registrado · espera el movimiento real</span>':miss.length&&tab==='completar'?miss.map(x=>`<span class="oc-chip oc-chip-bad">Falta ${esc(x.toLowerCase())}</span>`).join(' '):'';
- return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${quick?' cn-gray':''}"><div><small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div>${right}</article>`;
+ return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${quick?' cn-gray':''}"><div><small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div><div class="cn-side">${right}${quick?'':gear(m)}</div></article>`;
 }
 function draw(el){
  const hist=mode==='hist',infos=accountsInfo(),bal=balances(infos,s.movements,start,mode),all=s.movements.filter(m=>inRange(m,start,mode));
@@ -182,6 +187,12 @@ function wire(el){
  const more=el.querySelector('#cn-more');if(more)more.onclick=()=>{s.limit+=100;draw(el);};
  const mp=el.querySelector('#cn-mp');if(mp)mp.onclick=()=>syncMp(el);
  const setupBtn=el.querySelector('#cn-setup');if(setupBtn)setupBtn.onclick=()=>setupDialog(el);
+ el.querySelectorAll('[data-gear]').forEach(b=>b.onclick=()=>{s.gear=s.gear===b.dataset.gear?'':b.dataset.gear;draw(el);});
+ el.querySelectorAll('[data-flip]').forEach(b=>b.onclick=async()=>{
+  const m=s.movements.find(x=>x.id===b.dataset.flip);if(!m||m.saving)return;s.gear='';s.message='Cambiando…';draw(el);
+  try{await config.flipDirection(m,b.dataset.v);s.movements=await config.reloadMovements();s.message='Cambiado a '+(b.dataset.v===ENT?'ingreso':'egreso')+'.';}catch(e){s.message=e.message;}
+  draw(el);
+ });
  el.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.dir);run(el,m,async()=>config.setDirection(m,b.dataset.v));});
  el.querySelectorAll('[data-concept]').forEach(b=>b.onchange=()=>{
   if(!b.value)return;const m=s.movements.find(x=>x.id===b.dataset.concept),c=s.concepts.find(x=>x.id===b.value);
