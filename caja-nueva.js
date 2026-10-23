@@ -76,7 +76,7 @@ async function syncMp(el){
  if(s.syncing)return;s.syncing=true;draw(el);
  const wait=ms=>new Promise(r=>setTimeout(r,ms));
  try{
-  let r=await config.syncMercadoPago('iniciar'),added=r.agregados||0,done=r.completados||0,since=r.desde,bal=null,notes=[];
+  let r=await config.syncMercadoPago('iniciar'),added=r.agregados||0,done=r.completados||0,since=r.desde,bal=null,notes=[].concat(r.avisos||[]);
   for(let i=0;i<14&&r.fase==='reporte_pendiente';i++){
    s.message='Esperando el reporte de Mercado Pago ('+Math.min(100,(i+1)*7)+'%)…';draw(el);await wait(12000);
    r=await config.syncMercadoPago('revisar');added+=r.agregados||0;done+=r.completados||0;if(r.saldoMercadoPago)bal=r.saldoMercadoPago;if(r.avisos)notes=notes.concat(r.avisos);

@@ -80,18 +80,28 @@ function osMpLastDay_(fin,cuenta){
  const today=Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd');let last='';
  fin.rows.forEach(m=>{if(m.cuenta_id===cuenta&&ocProd_(m)){const d=osDate_(osClean_(m).fecha_operacion)||'';if(d&&d>last&&d<=today)last=d;}});return last;
 }
+// Escribe una fila nueva; si la hoja rechaza algún valor por su catálogo (validación de datos), reintenta sin los campos opcionales.
+function osMpWrite_(fin,row){
+ const drops=[[],['tipo_fuente'],['tipo_fuente','estado_fuente','calidad','lote_importacion_id','estado_conciliacion']];let last;
+ for(let i=0;i<drops.length;i++){
+  const r=Object.assign({},row);drops[i].forEach(k=>{if(fin.headers.indexOf(k)>=0)r[k]='';else delete r[k];});
+  Object.keys(r).forEach(k=>{if(fin.headers.indexOf(k)<0)delete r[k];});
+  try{ocPatchRow_(fin,fin.sheet.getLastRow()+1,r);Object.assign(row,r);return;}catch(e){last=e;if(!/inv[aá]lido|cat[aá]logo|validaci/i.test(String(e.message)))throw e;}
+ }
+ throw Error(String(last.message)+' (Mercado Pago '+row.operacion_origen_id+')');
+}
 // Agrega los eventos que no existen y completa fecha/dirección en filas antiguas de MP que las tenían vacías. Devuelve conteos.
 function osMpApply_(fin,cuenta,events){
- const idx=osMpIndex_(fin,cuenta),now=new Date().toISOString(),out={agregados:0,completados:0};
+ const idx=osMpIndex_(fin,cuenta),now=new Date().toISOString(),out={agregados:0,completados:0,fallidos:0,error:''};
  events.forEach(e=>{
   const ex=idx[e.id];
   if(ex){
    const patch={};if(!osDate_(osClean_(ex).fecha_operacion))patch.fecha_operacion=e.fecha;if(!ex.direccion)patch.direccion=e.direccion;
-   if(Object.keys(patch).length&&out.completados<300){patch.version=Number(ex.version||1)+1;patch.updated_at=now;patch.updated_by='MERCADO_PAGO_API';ocPatchRow_(fin,ex._row,patch);Object.assign(ex,patch);out.completados++;}
+   if(Object.keys(patch).length&&out.completados<300){patch.version=Number(ex.version||1)+1;patch.updated_at=now;patch.updated_by='MERCADO_PAGO_API';try{ocPatchRow_(fin,ex._row,patch);Object.assign(ex,patch);out.completados++;}catch(err){out.fallidos=(out.fallidos||0)+1;out.error=String(err.message);}}
    return;
   }
-  const row={movimiento_id:'MP-'+e.id,cuenta_id:cuenta,fecha_operacion:e.fecha,moneda:'CLP',direccion:e.direccion,monto:e.monto,descripcion:e.descripcion,referencia:e.id,hash_origen:'MP|'+e.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'IMPORTACION',calidad:'CONFIRMADO',version:1,created_at:now,created_by:'MERCADO_PAGO_API',updated_at:now,updated_by:'MERCADO_PAGO_API',monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:e.tipo_fuente,estado_fuente:'approved',operacion_origen_id:e.id,fecha_original:e.iso,estado_importacion:'API_MP',estado_clasificacion:'PENDIENTE'};
-  ocPatchRow_(fin,fin.sheet.getLastRow()+1,row);fin.rows.push(row);idx[e.id]=row;out.agregados++;
+  const row={movimiento_id:'MP-'+e.id,cuenta_id:cuenta,fecha_operacion:e.fecha,moneda:'CLP',direccion:e.direccion,monto:e.monto,descripcion:e.descripcion,referencia:e.id,hash_origen:'MP|'+e.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'IMPORTACION',calidad:'CONFIRMADO',version:1,created_at:now,created_by:'MERCADO_PAGO_API',updated_at:now,updated_by:'MERCADO_PAGO_API',monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:e.tipo_fuente,estado_fuente:'approved',operacion_origen_id:e.id,fecha_original:e.iso,estado_importacion:'CONFIRMADO',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',lote_importacion_id:'MP-API'};
+  osMpWrite_(fin,row);fin.rows.push(row);idx[e.id]=row;out.agregados++;
  });
  return out;
 }
@@ -114,7 +124,7 @@ function osMpStart_(){
  let reportId='';
  try{const b=osMpFetch_('/v1/account/release_report',{method:'post',contentType:'application/json',payload:JSON.stringify({begin_date:begin+'T03:00:00Z',end_date:new Date().toISOString()})});
   if(b.getResponseCode()===202){const j=JSON.parse(b.getContentText());reportId=String(j.id||'');osMpSet_('OC_MP_REPORT_REQ',JSON.stringify({id:reportId,at:Date.now(),begin:begin}));}}catch(e){if(/^TOKEN/.test(e.message))throw e;}
- return {fase:reportId?'reporte_pendiente':'listo',desde:begin,agregados:r.agregados,completados:r.completados,pagosRevisados:events.length};
+ return {fase:reportId?'reporte_pendiente':'listo',desde:begin,agregados:r.agregados,completados:r.completados,pagosRevisados:events.length,avisos:r.fallidos?['No pude completar '+r.fallidos+' filas antiguas: '+r.error]:[]};
 }
 function osMpCheck_(){
  const cuenta=osMpAccount_(),fin=osMpFin_();let req;try{req=JSON.parse(osMpProp_('OC_MP_REPORT_REQ')||'null');}catch(e){req=null;}
@@ -127,7 +137,7 @@ function osMpCheck_(){
  const parsed=osMpReportRows_(f.getContentText()),r=osMpApply_(fin,cuenta,parsed.rows);
  osMpSet_('OC_MP_REPORT_REQ','');
  if(parsed.balance!==null)osMpSet_('OC_MP_BALANCE',JSON.stringify({saldo:parsed.balance,at:parsed.balanceAt}));
- return {fase:'listo',agregados:r.agregados,completados:r.completados,retiros:parsed.rows.filter(x=>x.esRetiro).length,saldoMercadoPago:parsed.balance===null?null:{saldo:parsed.balance,at:parsed.balanceAt}};
+ return {fase:'listo',agregados:r.agregados,completados:r.completados,avisos:r.fallidos?['No pude completar '+r.fallidos+' filas antiguas: '+r.error]:[],retiros:parsed.rows.filter(x=>x.esRetiro).length,saldoMercadoPago:parsed.balance===null?null:{saldo:parsed.balance,at:parsed.balanceAt}};
 }
 function osMpSync_(p,actor){
  if(!actor||!actor.manage)throw Error('Acceso restringido.');
