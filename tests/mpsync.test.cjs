@@ -14,3 +14,10 @@ test('pago aprobado: dirección por cobrador/pagador; autorizados quedan por lib
  assert.equal(ctx.E({...base,collector:{id:9},payer_id:7},'5'),null);
 });
 test('shift de días',()=>{assert.equal(ctx.S('2026-10-15',3),'2026-10-12');});
+test('saldo por movimientos: inicial + todos los movimientos desde el corte, completos o no',()=>{
+ const {movementBalance}=require('../caja-nueva.js');
+ const a={id:'mp',opening:1000,cut:'2026-10-15'};
+ const mv=[{accountId:'mp',date:'2026-10-14',direction:'ENTRADA',amount:999},{accountId:'mp',date:'2026-10-16',direction:'ENTRADA',amount:500},{accountId:'mp',date:'2026-10-17',direction:'SALIDA',amount:200},{accountId:'mp',date:'2026-10-17',direction:'',amount:7},{accountId:'otra',date:'2026-10-17',direction:'ENTRADA',amount:50}];
+ assert.deepEqual(movementBalance(a,mv,'2026-10-15'),{value:1300,count:2,skipped:1});
+ assert.equal(movementBalance({id:'mp',opening:null},mv,'2026-10-15'),null);
+});

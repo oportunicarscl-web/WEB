@@ -183,3 +183,5 @@ body.workspace-open{
 #oc-caja-nueva select,#oc-workspace .cn-controls select,#oc-workspace .cn-controls input{color-scheme:light;background-color:#fffaf2!important;color:#3b2f21!important;-webkit-text-fill-color:#3b2f21;border:1px solid #b4935f;border-radius:6px;padding:10px;font:inherit;transition:none!important;-webkit-appearance:menulist;appearance:auto}
 #oc-caja-nueva select:focus,#oc-caja-nueva select:hover,#oc-caja-nueva select:active,#oc-workspace .cn-controls select:focus,#oc-workspace .cn-controls select:hover{background-color:#fffaf2!important;color:#3b2f21!important;outline:2px solid #b4935f;outline-offset:1px}
 #oc-caja-nueva select option,#oc-workspace .cn-controls select option{background:#fffaf2;color:#3b2f21}
+
+.cn-mov{display:block;margin-top:6px;padding-top:6px;border-top:1px dashed #b4935f;font-size:11px;color:#3b2f21;opacity:.9}.cn-mov b{color:#1f1710}.cn-mov .cn-ok{color:#2f6b3b}.cn-mov .cn-bad{color:#a23b2a}

@@ -31,6 +31,16 @@ function balances(accounts,movements,start,mode){
  });
  return out;
 }
+// Segundo factor: saldo inicial + TODOS los movimientos desde el corte (completos o no), para cruzarlo con el saldo real del banco/Mercado Pago.
+function movementBalance(a,movements,start){
+ if(a.opening===null||a.opening===undefined)return null;
+ const cut=a.cut||start;let acc=a.opening,n=0,skipped=0;
+ movements.filter(m=>m.accountId===a.id&&isNew(m,cut)).forEach(m=>{
+  if((m.direction!==ENT&&m.direction!==SAL)||!Number.isFinite(m.amount)){skipped++;return;}
+  acc+=m.direction===ENT?m.amount:-m.amount;n++;
+ });
+ return {value:acc,count:n,skipped};
+}
 const dayDiff=(a,b)=>Math.round((Date.parse(a)-Date.parse(b))/86400000);
 // Gasto registrado por atajo ↔ movimiento que llegó del banco o Mercado Pago: misma cuenta, importe y dirección, fecha cercana.
 function findMatches(list){
@@ -42,7 +52,7 @@ function findMatches(list){
  }
  return out;
 }
-const api={missing,isComplete,balances,findMatches,isNew,inRange};
+const api={missing,isComplete,balances,findMatches,isNew,inRange,movementBalance};
 if(typeof module!=='undefined')module.exports=api;
 if(!root.document)return;
 
@@ -98,13 +108,19 @@ function tokenDialog(el){
  d.querySelector('form').onsubmit=async e=>{e.preventDefault();const st=d.querySelector('[role=status]');st.textContent='Validando con Mercado Pago…';
   try{await config.saveMpToken(Object.fromEntries(new FormData(e.target)));d.close();if(el&&el.id==='oc-caja-nueva'){s.message='Token guardado.';draw(el);syncMp(el);}else alert('Claves guardadas.');}catch(err){st.textContent=err.message;}};
 }
+function movLine(a){
+ if(!/mercado/i.test(a.name))return '';
+ const mb=movementBalance(a,s.movements,start);if(!mb)return '';
+ const real=realMp(a),diff=real===null?null:real-mb.value;
+ return `<small class="cn-mov">Por movimientos desde ${esc(fmtDate(a.cut||start))}: <b>${money(mb.value)}</b> (${mb.count} mov.${mb.skipped?`, ${mb.skipped} sin dirección o importe`:''})${diff===null?'':` · diferencia con el real: <b class="${diff===0?'cn-ok':'cn-bad'}">${diff===0?'cuadra':money(diff)}</b>`}</small>`;
+}
 function accountCard(a,bl){
  if(mode==='hist'){
   const gap=a.opening===null?null:a.opening-bl.computed,pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
   return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${money(bl.computed)}</strong><small>Según lo registrado hasta el ${esc(fmtDate(start))}</small>${a.opening!==null?`<small>Saldo real al ${esc(fmtDate(start))}: <b>${money(a.opening)}</b></small><small>${gap===0?'Historia completa':'Falta reconstruir '+money(gap)}</small>`:''}${pend}</article>`;
  }
  const pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
- return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${realMp(a)!==null?money(realMp(a)):bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${realMp(a)!==null?`<small>Saldo real de Mercado Pago al ${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))} · según lo clasificado ${bl.computed===null?'—':money(bl.computed)}</small>`:''}${pend}</article>`;
+ return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${realMp(a)!==null?money(realMp(a)):bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${realMp(a)!==null?`<small>Saldo real de Mercado Pago al ${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))} · según lo clasificado ${bl.computed===null?'—':money(bl.computed)}</small>`:''}${pend}${movLine(a)}</article>`;
 }
 function controls(m){
  const c=m.classification,list=conceptsFor(m),vehicle=c?.vehicleOperation,miss=missing(m);

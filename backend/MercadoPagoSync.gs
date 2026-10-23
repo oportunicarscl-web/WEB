@@ -140,8 +140,8 @@ function osMpStart_(){
 function osMpCheck_(){
  const cuenta=osMpAccount_(),fin=osMpFin_();let req;try{req=JSON.parse(osMpProp_('OC_MP_REPORT_REQ')||'null');}catch(e){req=null;}
  if(!req)return {fase:'listo',agregados:0,completados:0};
- const list=osMpJson_('/v1/account/release_report/list'),since=new Date(req.at-120000).toISOString();
- const ready=(Array.isArray(list)?list:[]).filter(r=>r.file_name&&(String(r.id)===String(req.id)||String(r.date_created||'')>=since)).sort((a,b)=>String(b.date_created).localeCompare(String(a.date_created)));
+ const list=osMpJson_('/v1/account/release_report/list'),since=req.at-120000;
+ const ready=(Array.isArray(list)?list:[]).filter(r=>r.file_name&&(String(r.id)===String(req.id)||Date.parse(r.date_created||'')>=since)).sort((a,b)=>Date.parse(b.date_created||'')-Date.parse(a.date_created||''));
  if(!ready.length){if(Date.now()-req.at>20*60000){osMpSet_('OC_MP_REPORT_REQ','');return {fase:'listo',agregados:0,completados:0,avisos:['El reporte de Mercado Pago no llegó a tiempo; vuelve a intentar.']};}return {fase:'reporte_pendiente',agregados:0,completados:0};}
  const f=osMpFetch_('/v1/account/release_report/'+encodeURIComponent(ready[0].file_name));
  if(f.getResponseCode()!==200)return {fase:'reporte_pendiente',agregados:0,completados:0};
