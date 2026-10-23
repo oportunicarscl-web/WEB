@@ -141,7 +141,7 @@ function osMpCheck_(){
  const cuenta=osMpAccount_(),fin=osMpFin_();let req;try{req=JSON.parse(osMpProp_('OC_MP_REPORT_REQ')||'null');}catch(e){req=null;}
  if(!req)return {fase:'listo',agregados:0,completados:0};
  const list=osMpJson_('/v1/account/release_report/list'),since=req.at-120000;
- const ready=(Array.isArray(list)?list:[]).filter(r=>r.file_name&&(String(r.id)===String(req.id)||Date.parse(r.date_created||'')>=since)).sort((a,b)=>Date.parse(b.date_created||'')-Date.parse(a.date_created||''));
+ const ready=(Array.isArray(list)?list:[]).filter(r=>r.file_name&&(String(r.id)===String(req.id)||Date.parse(r.date_created||'')>=since||Date.parse(r.date_created||'')>=Date.now()-45*60000)).sort((a,b)=>Date.parse(b.date_created||'')-Date.parse(a.date_created||''));
  if(!ready.length){if(Date.now()-req.at>20*60000){osMpSet_('OC_MP_REPORT_REQ','');return {fase:'listo',agregados:0,completados:0,avisos:['El reporte de Mercado Pago no llegó a tiempo; vuelve a intentar.']};}return {fase:'reporte_pendiente',agregados:0,completados:0};}
  const f=osMpFetch_('/v1/account/release_report/'+encodeURIComponent(ready[0].file_name));
  if(f.getResponseCode()!==200)return {fase:'reporte_pendiente',agregados:0,completados:0};
@@ -157,11 +157,14 @@ function osMpSync_(p,actor){
  if(out.fase==='listo')osMpSet_('OC_MP_LAST_SYNC',new Date().toISOString());
  out.at=new Date().toISOString();return out;
 }
-// Disparador por hora: hace las dos fases en una sola ejecución (espera el reporte hasta ~4 minutos).
+// Disparador programado (9, 13 y 18 h): hace las dos fases en una sola ejecución (espera el reporte hasta ~4 minutos).
 function sincronizarMercadoPagoAuto(){
  const lock=LockService.getScriptLock();if(!lock.tryLock(20000))return;
  try{let r=osMpStart_();for(let i=0;i<12&&r.fase==='reporte_pendiente';i++){Utilities.sleep(20000);r=osMpCheck_();}return r;}finally{lock.releaseLock();}
 }
+// Sincronización automática a las 9:00, 13:00 y 18:00 (hora del proyecto). Ejecutar una vez desde el editor; reemplaza disparadores anteriores de este sync.
 function activarSyncMercadoPago(){
- if(!ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='sincronizarMercadoPagoAuto'))ScriptApp.newTrigger('sincronizarMercadoPagoAuto').timeBased().everyHours(1).create();return {programada:true};
+ ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==='sincronizarMercadoPagoAuto').forEach(t=>ScriptApp.deleteTrigger(t));
+ [9,13,18].forEach(h=>ScriptApp.newTrigger('sincronizarMercadoPagoAuto').timeBased().atHour(h).nearMinute(5).everyDays(1).create());
+ return {programada:true,horas:[9,13,18],zona:Session.getScriptTimeZone()};
 }
