@@ -6,11 +6,11 @@ test('reporte de liberaciones: solo payment/payout, ignora reservas y totales, s
  assert.deepEqual(r.rows.map(x=>[x.id,x.direccion,x.monto]),[['PAYOUT-10','SALIDA',49400],['11','ENTRADA',23909]]);
  assert.equal(r.balance,4840951);
 });
-test('pago aprobado: dirección por cobrador/pagador; ignora rechazados y autorizados',()=>{
+test('pago aprobado: dirección por cobrador/pagador; autorizados quedan por liberar; ignora rechazados',()=>{
  const base={id:1,status:'approved',date_approved:'2026-10-21T16:52:41.000-04:00',transaction_amount:1000,transaction_details:{net_received_amount:962},payment_type_id:'credit_card'};
  const ent=ctx.E({...base,collector:{id:5}},'5');assert.equal(ent.direccion,'ENTRADA');assert.equal(ent.monto,962);
  const sal=ctx.E({...base,collector:{id:9},payer_id:5},'5');assert.equal(sal.direccion,'SALIDA');assert.equal(sal.monto,1000);
- assert.equal(ctx.E({...base,status:'rejected',collector:{id:5}},'5'),null);assert.equal(ctx.E({...base,status:'authorized',payer_id:5,collector:{id:9}},'5'),null);
+ assert.equal(ctx.E({...base,status:'rejected',collector:{id:5}},'5'),null);const hold=ctx.E({...base,status:'authorized',payer_id:5,collector:{id:9},description:'Entel'},'5');assert.equal(hold.porLiberar,true);assert.equal(hold.direccion,'SALIDA');assert.equal(hold.monto,1000);assert.match(hold.descripcion,/^Por liberar/);assert.equal(ctx.E({...base,status:'cancelled',payer_id:5,collector:{id:9}},'5'),null);
  assert.equal(ctx.E({...base,collector:{id:9},payer_id:7},'5'),null);
 });
 test('shift de días',()=>{assert.equal(ctx.S('2026-10-15',3),'2026-10-12');});

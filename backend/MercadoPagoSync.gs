@@ -42,16 +42,17 @@ function osCsv_(text,sep){
 }
 // Pago de la API -> evento de caja (o null si no es efectivo). Solo APROBADOS. Entrada = soy cobrador; salida = soy el pagador.
 function osMpPaymentEvent_(p,me){
- if(!p||p.status!=='approved')return null;
+ if(!p||(p.status!=='approved'&&p.status!=='authorized'))return null;
+ const hold=p.status==='authorized';
  const col=String((p.collector&&p.collector.id)||p.collector_id||''),payer=String(p.payer_id||(p.payer&&p.payer.id)||'');
  const iso0=String(p.date_approved||p.date_created||''),day=typeof osMpDay_==='function'?osMpDay_(iso0):iso0.slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return null;
  const dir=col===me?'ENTRADA':payer===me?'SALIDA':'';if(!dir)return null;
  const net=Math.round(Number(p.transaction_details&&p.transaction_details.net_received_amount)||0),gross=Math.round(Number(p.transaction_amount)||0);
- const amount=dir==='ENTRADA'?(net>0?net:gross):gross;if(!(amount>0))return null;
+ const amount=dir==='ENTRADA'&&!hold?(net>0?net:gross):gross;if(!(amount>0))return null;
  const commerce=p.point_of_interaction&&p.point_of_interaction.transaction_data&&p.point_of_interaction.transaction_data.commerce&&p.point_of_interaction.transaction_data.commerce.name;
  const type=String(p.payment_type_id||''),desc=String(p.description||commerce||'').trim();
  const label=dir==='ENTRADA'?(type==='bank_transfer'?'Transferencia recibida':type==='credit_card'?'Cobro con tarjeta':'Dinero recibido en Mercado Pago'):(commerce?'Compra '+commerce:'Pago o transferencia enviada');
- return {id:String(p.id),fecha:day,direccion:dir,monto:amount,descripcion:(desc&&desc!==commerce?label+' · '+desc:label),tipo_fuente:String(p.operation_type||'payment'),iso:String(p.date_approved||p.date_created||'')};
+ return {id:String(p.id),fecha:day,direccion:dir,monto:amount,descripcion:(hold?'Por liberar · ':'')+(desc&&desc!==commerce?label+' · '+desc:label),tipo_fuente:String(p.operation_type||'payment'),iso:String(p.date_approved||p.date_created||''),porLiberar:hold};
 }
 // CSV del reporte de liberaciones (separador ; o ,) -> eventos reales (payment y payout) + saldo corrido. Ignora reserve_* y la fila de totales.
 function osMpReportRows_(csv){
@@ -91,13 +92,15 @@ function osMpWrite_(fin,row){
  throw Error(String(last.message)+' (Mercado Pago '+row.operacion_origen_id+')');
 }
 // Agrega los eventos que no existen y completa fecha/dirección en filas antiguas de MP que las tenían vacías. Devuelve conteos.
-function osMpApply_(fin,cuenta,events){
+function osMpApply_(fin,cuenta,events,cancelIds){
  const idx=osMpIndex_(fin,cuenta),now=new Date().toISOString(),t0=Date.now(),out={agregados:0,completados:0,fallidos:0,error:''};
  events.forEach(e=>{
   const ex=idx[e.id];
-  const row={movimiento_id:'MP-'+e.id,cuenta_id:cuenta,fecha_operacion:e.fecha,moneda:'CLP',direccion:e.direccion,monto:e.monto,descripcion:e.descripcion,referencia:'MP-'+e.id,hash_origen:'MP|'+e.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'IMPORTACION',calidad:'CONFIRMADO',version:1,created_at:now,created_by:'MERCADO_PAGO_API',updated_at:now,updated_by:'MERCADO_PAGO_API',monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:e.tipo_fuente,estado_fuente:'approved',operacion_origen_id:e.id,fecha_original:e.iso,estado_importacion:'CONFIRMADO',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',lote_importacion_id:'MP-API'};
+  const row={movimiento_id:'MP-'+e.id,cuenta_id:cuenta,fecha_operacion:e.fecha,moneda:'CLP',direccion:e.direccion,monto:e.monto,descripcion:e.descripcion,referencia:'MP-'+e.id,hash_origen:'MP|'+e.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'IMPORTACION',calidad:'CONFIRMADO',version:1,created_at:now,created_by:'MERCADO_PAGO_API',updated_at:now,updated_by:'MERCADO_PAGO_API',monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:e.tipo_fuente,estado_fuente:e.porLiberar?'authorized':'approved',operacion_origen_id:e.id,fecha_original:e.iso,estado_importacion:'CONFIRMADO',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',lote_importacion_id:'MP-API'};
   if(ex){
-   const patch={};if(!osDate_(osClean_(ex).fecha_operacion))patch.fecha_operacion=e.fecha;if(!ex.direccion)patch.direccion=e.direccion;
+   const patch={};
+   if(String(ex.estado_fuente)==='authorized'&&!e.porLiberar){patch.estado_fuente='approved';patch.descripcion=e.descripcion;patch.monto=e.monto;patch.fecha_operacion=e.fecha;patch.fecha_original=e.iso;}
+   if(!osDate_(osClean_(ex).fecha_operacion))patch.fecha_operacion=e.fecha;if(!ex.direccion)patch.direccion=e.direccion;
    // Completa campos vacíos de filas a medio escribir (sin tocar clasificación ni lo ya cargado)
    ['monto','descripcion','referencia','hash_origen','tipo_fuente','estado_fuente','operacion_origen_id','fecha_original','estado_importacion','estado_clasificacion','estado_conciliacion','lote_importacion_id','monto_confirmado','incluir_en_saldo','moneda','ambiente','estado_registro','origen','calidad','created_at','created_by'].forEach(k=>{if((ex[k]===undefined||ex[k]===''||ex[k]===null)&&fin.headers.indexOf(k)>=0)patch[k]=row[k];});
    if(Object.keys(patch).length&&out.completados<60&&Date.now()-t0<80000){patch.version=Number(ex.version||1)+1;patch.updated_at=now;patch.updated_by='MERCADO_PAGO_API';try{ocPatchRow_(fin,ex._row,patch);Object.assign(ex,patch);out.completados++;}catch(err){out.fallidos=(out.fallidos||0)+1;out.error=String(err.message);}}
@@ -105,6 +108,7 @@ function osMpApply_(fin,cuenta,events){
   }
   osMpWrite_(fin,row);fin.rows.push(row);idx[e.id]=row;out.agregados++;
  });
+ (cancelIds||[]).forEach(id=>{const ex=idx[id];if(ex&&String(ex.estado_fuente)==='authorized'&&ex.estado_registro!=='ANULADO'&&!String(ex.concepto_id||'')){try{ocPatchRow_(fin,ex._row,{estado_registro:'ANULADO',version:Number(ex.version||1)+1,updated_at:now,updated_by:'MERCADO_PAGO_API'});ex.estado_registro='ANULADO';out.anulados=(out.anulados||0)+1;}catch(err){out.error=String(err.message);}}});
  return out;
 }
 function osMpSearchRange_(beginIso){
@@ -121,13 +125,17 @@ function osMpBegin_(fin,cuenta){
 }
 function osMpStart_(){
  const cuenta=osMpAccount_(),fin=osMpFin_(),begin=osMpBegin_(fin,cuenta),me=osMpMeId_();
- const events=osMpSearchRange_(begin+'T00:00:00.000-03:00').map(p=>osMpPaymentEvent_(p,me)).filter(Boolean);
- const r=osMpApply_(fin,cuenta,events);
+ // 1) Pide el reporte primero: Mercado Pago lo genera mientras se importan los pagos.
  let reportId='',reportWarn='';
  try{const b=osMpFetch_('/v1/account/release_report',{method:'post',contentType:'application/json',payload:JSON.stringify({begin_date:begin+'T03:00:00Z',end_date:Utilities.formatDate(new Date(),'UTC',"yyyy-MM-dd'T'HH:mm:ss'Z'")})});
   if(b.getResponseCode()===202){const j=JSON.parse(b.getContentText());reportId=String(j.id||'');osMpSet_('OC_MP_REPORT_REQ',JSON.stringify({id:reportId,at:Date.now(),begin:begin}));}
   else reportWarn='Mercado Pago no aceptó pedir el reporte de saldo (HTTP '+b.getResponseCode()+'): '+String(b.getContentText()).slice(0,160);}catch(e){if(/^TOKEN/.test(e.message))throw e;reportWarn='No pude pedir el reporte de saldo: '+String(e.message).slice(0,160);}
- return {fase:reportId?'reporte_pendiente':'listo',desde:begin,agregados:r.agregados,completados:r.completados,pagosRevisados:events.length,avisos:(r.fallidos?['No pude completar '+r.fallidos+' filas antiguas: '+r.error]:[]).concat(reportWarn?[reportWarn]:[])};
+ // 2) Pagos aprobados y autorizados ("Por liberar") desde el último movimiento − 3 días
+ const payments=osMpSearchRange_(begin+'T00:00:00.000-03:00'),events=payments.map(p=>osMpPaymentEvent_(p,me)).filter(Boolean);
+ const cancelIds=payments.filter(p=>['cancelled','rejected','refunded','charged_back'].indexOf(p.status)>=0).map(p=>String(p.id));
+ const r=osMpApply_(fin,cuenta,events,cancelIds);
+ const hold=events.filter(e=>e.porLiberar).length;
+ return {fase:reportId?'reporte_pendiente':'listo',desde:begin,agregados:r.agregados,completados:r.completados,anulados:r.anulados||0,porLiberar:hold,pagosRevisados:events.length,avisos:(r.fallidos?['No pude completar '+r.fallidos+' filas antiguas: '+r.error]:[]).concat(reportWarn?[reportWarn]:[])};
 }
 function osMpCheck_(){
  const cuenta=osMpAccount_(),fin=osMpFin_();let req;try{req=JSON.parse(osMpProp_('OC_MP_REPORT_REQ')||'null');}catch(e){req=null;}

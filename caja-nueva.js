@@ -77,14 +77,14 @@ async function syncMp(el){
  if(s.syncing)return;s.syncing=true;draw(el);
  const wait=ms=>new Promise(r=>setTimeout(r,ms));
  try{
-  let r=await config.syncMercadoPago('iniciar'),added=r.agregados||0,done=r.completados||0,since=r.desde,bal=null,notes=[].concat(r.avisos||[]);
+  let r=await config.syncMercadoPago('iniciar'),added=r.agregados||0,done=r.completados||0,since=r.desde,hold=r.porLiberar||0,voided=r.anulados||0,bal=null,notes=[].concat(r.avisos||[]);
   for(let i=0;i<14&&r.fase==='reporte_pendiente';i++){
    s.message='Esperando el reporte de Mercado Pago ('+Math.min(100,(i+1)*7)+'%)…';draw(el);await wait(12000);
    r=await config.syncMercadoPago('revisar');added+=r.agregados||0;done+=r.completados||0;if(r.saldoMercadoPago)bal=r.saldoMercadoPago;if(r.avisos)notes=notes.concat(r.avisos);
   }
   s.movements=await config.reloadMovements();
   if(bal)s.mpBalance={saldo:bal.saldo,at:bal.at};
-  s.message=(added?`Mercado Pago: ${added} movimiento${added===1?'':'s'} nuevo${added===1?'':'s'}`:'Mercado Pago al día')+(done?`, ${done} completado${done===1?'':'s'} (fecha o dirección)`:'')+(since?` · revisado desde ${fmtDate(since)}`:'')+'.'+(r.fase==='reporte_pendiente'?' El reporte de retiros y saldo aún no llega; aprieta de nuevo en unos minutos.':'')+(notes.length?' '+notes.join(' '):'');
+  s.message=(added?`Mercado Pago: ${added} movimiento${added===1?'':'s'} nuevo${added===1?'':'s'}`:'Mercado Pago al día')+(done?`, ${done} completado${done===1?'':'s'} (fecha o dirección)`:'')+(hold?` · ${hold} por liberar`:'')+(voided?` · ${voided} anulado${voided===1?'':'s'} (Mercado Pago los canceló)`:'')+(since?` · revisado desde ${fmtDate(since)}`:'')+'.'+(r.fase==='reporte_pendiente'?' El reporte de retiros y saldo aún no llega; aprieta de nuevo en unos minutos.':'')+(notes.length?' '+notes.join(' '):'');
  }catch(e){
   if(/^TOKEN:/.test(e.message)){s.message=e.message.replace(/^TOKEN:\s*/,'')+(config.isAdmin?'':' Pídele a Alex que registre el token.');if(config.isAdmin){s.syncing=false;draw(el);tokenDialog(el);return;}}
   else s.message=e.message;
