@@ -141,16 +141,7 @@ function osMpCheck_(){
  if(parsed.balance!==null)osMpSet_('OC_MP_BALANCE',JSON.stringify({saldo:parsed.balance,at:parsed.balanceAt}));
  return {fase:'listo',agregados:r.agregados,completados:r.completados,avisos:r.fallidos?['No pude completar '+r.fallidos+' filas antiguas: '+r.error]:[],retiros:parsed.rows.filter(x=>x.esRetiro).length,saldoMercadoPago:parsed.balance===null?null:{saldo:parsed.balance,at:parsed.balanceAt}};
 }
-// Borra de la hoja lo que importó la API y aún no está clasificado (para repetir la prueba). Solo Alex.
-function osMpUndo_(actor){
- if(!actor||!ocIsAdminUser_(actor))throw Error('Solo Alex puede borrar lo importado.');
- const cuenta=osMpAccount_(),fin=osMpFin_(),rows=fin.rows.filter(r=>r.cuenta_id===cuenta&&(String(r.lote_importacion_id)==='MP-API'||String(r.created_by)==='MERCADO_PAGO_API')&&!String(r.concepto_id||'')&&r._row>1).sort((a,b)=>b._row-a._row);
- rows.forEach(r=>fin.sheet.deleteRow(r._row));SpreadsheetApp.flush();
- osMpSet_('OC_MP_BALANCE','');osMpSet_('OC_MP_REPORT_REQ','');
- return {fase:'borrado',borrados:rows.length};
-}
 function osMpSync_(p,actor){
- if(p&&p.fase==='deshacer')return osMpUndo_(actor);
  if(!actor||!actor.manage)throw Error('Acceso restringido.');
  const out=p&&p.fase==='revisar'?osMpCheck_():osMpStart_();
  if(!out.saldoMercadoPago){try{const b=JSON.parse(osMpProp_('OC_MP_BALANCE')||'null');if(b&&b.saldo!==undefined)out.saldoMercadoPago=b;}catch(e){}}
