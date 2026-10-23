@@ -126,9 +126,12 @@ function osMpBegin_(fin,cuenta){
 function osMpStart_(){
  const cuenta=osMpAccount_(),fin=osMpFin_(),begin=osMpBegin_(fin,cuenta),me=osMpMeId_();
  // 1) Pide el reporte primero: Mercado Pago lo genera mientras se importan los pagos.
- let reportId='',reportWarn='';
- try{const b=osMpFetch_('/v1/account/release_report',{method:'post',contentType:'application/json',payload:JSON.stringify({begin_date:begin+'T03:00:00Z',end_date:Utilities.formatDate(new Date(),'UTC',"yyyy-MM-dd'T'HH:mm:ss'Z'")})});
-  if(b.getResponseCode()===202){const j=JSON.parse(b.getContentText());reportId=String(j.id||'');osMpSet_('OC_MP_REPORT_REQ',JSON.stringify({id:reportId,at:Date.now(),begin:begin}));}
+ let reportId='',reportWarn='',before=[];
+ // Ventana del reporte >= 30 días: Mercado Pago no generó reportes de ventanas cortas (4 días) pero sí los de 30 y 60 días.
+ const today30=osMpShift_(Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd'),30),repBegin=begin<today30?begin:today30;
+ try{const l0=osMpJson_('/v1/account/release_report/list');before=(Array.isArray(l0)?l0:[]).map(r=>String(r.id));}catch(e){if(/^TOKEN/.test(e.message))throw e;}
+ try{const b=osMpFetch_('/v1/account/release_report',{method:'post',contentType:'application/json',payload:JSON.stringify({begin_date:repBegin+'T03:00:00Z',end_date:Utilities.formatDate(new Date(),'UTC',"yyyy-MM-dd'T'HH:mm:ss'Z'")})});
+  if(b.getResponseCode()===202){const j=JSON.parse(b.getContentText());reportId=String(j.id||'');osMpSet_('OC_MP_REPORT_REQ',JSON.stringify({id:reportId,at:Date.now(),begin:begin,before:before}));}
   else reportWarn='Mercado Pago no aceptó pedir el reporte de saldo (HTTP '+b.getResponseCode()+'): '+String(b.getContentText()).slice(0,160);}catch(e){if(/^TOKEN/.test(e.message))throw e;reportWarn='No pude pedir el reporte de saldo: '+String(e.message).slice(0,160);}
  // 2) Pagos aprobados y autorizados ("Por liberar") desde el último movimiento − 3 días
  const payments=osMpSearchRange_(begin+'T00:00:00.000-03:00'),events=payments.map(p=>osMpPaymentEvent_(p,me)).filter(Boolean);
@@ -141,7 +144,7 @@ function osMpCheck_(){
  const cuenta=osMpAccount_(),fin=osMpFin_();let req;try{req=JSON.parse(osMpProp_('OC_MP_REPORT_REQ')||'null');}catch(e){req=null;}
  if(!req)return {fase:'listo',agregados:0,completados:0};
  const list=osMpJson_('/v1/account/release_report/list'),since=req.at-120000;
- const ready=(Array.isArray(list)?list:[]).filter(r=>r.file_name&&(String(r.id)===String(req.id)||Date.parse(r.date_created||'')>=since||Date.parse(r.date_created||'')>=Date.now()-45*60000)).sort((a,b)=>Date.parse(b.date_created||'')-Date.parse(a.date_created||''));
+ const ready=(Array.isArray(list)?list:[]).filter(r=>r.file_name&&(Array.isArray(req.before)?req.before.indexOf(String(r.id))<0:(String(r.id)===String(req.id)||Date.parse(r.date_created||'')>=since||Date.parse(r.date_created||'')>=Date.now()-45*60000))).sort((a,b)=>Date.parse(b.date_created||'')-Date.parse(a.date_created||''));
  if(!ready.length){if(Date.now()-req.at>20*60000){osMpSet_('OC_MP_REPORT_REQ','');return {fase:'listo',agregados:0,completados:0,avisos:['El reporte de Mercado Pago no llegó a tiempo; vuelve a intentar.']};}return {fase:'reporte_pendiente',agregados:0,completados:0};}
  const f=osMpFetch_('/v1/account/release_report/'+encodeURIComponent(ready[0].file_name));
  if(f.getResponseCode()!==200)return {fase:'reporte_pendiente',agregados:0,completados:0};
