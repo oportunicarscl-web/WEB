@@ -99,6 +99,7 @@
    async manualAdd(accountId,requestId,rows){const saved=await call('manualAdd',{accountId,requestId,rows});return saved.map(raw=>store.addRaw(raw)).filter(Boolean);},
    async saveMpToken(t){return call('saveMpToken',t);},
    async syncMercadoPago(fase){return call('syncMercadoPago',{fase});},
+   async undoMercadoPago(){return call('syncMercadoPago',{fase:'deshacer'});},
    async reloadMovements(){const l=await call('load');return store.replaceMovements(l);},
    async manualVoid(id){await call('manualVoid',{id});store.patchRaw(id,{estado_registro:'ANULADO'});return true;},
    async quickMatch(q,x){const r=await call('quickMatch',{quickId:q.id,targetId:x.id,expectedVersion:x.version});store.patchRaw(q.id,{estado_registro:'ANULADO'});store.patchRaw(x.id,r.target);return r.target;},

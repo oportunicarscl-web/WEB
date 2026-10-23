@@ -103,7 +103,7 @@ function accountCard(a,bl){
   return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${money(bl.computed)}</strong><small>Según lo registrado hasta el ${esc(fmtDate(start))}</small>${a.opening!==null?`<small>Saldo real al ${esc(fmtDate(start))}: <b>${money(a.opening)}</b></small><small>${gap===0?'Historia completa':'Falta reconstruir '+money(gap)}</small>`:''}${pend}</article>`;
  }
  const pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
- return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${pend}</article>`;
+ return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${pend}${s.mpBalance&&/mercado/i.test(a.name)?`<small>Real en Mercado Pago: <b>${money(s.mpBalance.saldo)}</b></small>`:''}</article>`;
 }
 function controls(m){
  const c=m.classification,list=conceptsFor(m),vehicle=c?.vehicleOperation,miss=missing(m);
