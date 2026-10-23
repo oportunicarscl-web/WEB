@@ -63,7 +63,7 @@ let s,config,start,matched=false,mode='nueva';
 function reset(){s=null;config=null;matched=false;document.querySelectorAll('[data-cn-dialog]').forEach(d=>d.remove());}
 function setup(options={}){
  config=options;start=options.cashStart||'2026-10-15';matched=false;
- s={movements:(options.movements||[]).slice(),concepts:options.concepts||[],inventory:options.inventory||[],tab:{nueva:'',hist:''},editing:'',message:'',busy:false,checks:{},limit:80};
+ s={movements:(options.movements||[]).slice(),concepts:options.concepts||[],inventory:options.inventory||[],tab:{nueva:'',hist:''},off:new Set(),editing:'',message:'',busy:false,checks:{},limit:80};
 }
 const snapshot=()=>s?{movements:s.movements,concepts:s.concepts}:null;
 function replaceMovements(list){if(s)s.movements=list;}
@@ -78,7 +78,7 @@ function mount(parent){const el=parent.querySelector('#oc-caja-nueva');if(el&&s)
 function conceptsFor(m){return s.concepts.filter(c=>m.direction===ENT?['INGRESO','TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].includes(c.nature):m.direction===SAL?c.nature!=='INGRESO':true);}
 const realMp=a=>s&&s.mpBalance&&/mercado/i.test(a.name)?Number(s.mpBalance.saldo):null;
 function totalLine(infos,bal){
- const shown=a=>/mercado/i.test(a.name)?(movementBalance(a,s.movements,start)||{}).value:bal[a.id]&&bal[a.id].computed,known=infos.filter(a=>shown(a)!==null&&shown(a)!==undefined),total=known.reduce((t,a)=>t+shown(a),0);
+ const shown=a=>/mercado/i.test(a.name)?(movementBalance(a,s.movements,start)||{}).value:bal[a.id]&&bal[a.id].computed,known=infos.filter(a=>!isOff(a.id)&&shown(a)!==null&&shown(a)!==undefined),total=known.reduce((t,a)=>t+shown(a),0);
  const sync=config.syncMercadoPago?`<button id="cn-mp" class="cn-sync${s.syncing?' spin':''}" title="Actualizar Mercado Pago" aria-label="Actualizar Mercado Pago" ${s.syncing?'disabled':''}>⟳</button>`:'';
  const mpBal=s.mpBalance&&s.mpBalance.at?`<small>${esc(fmtDate(String(s.mpBalance.at).slice(0,10)))} ${esc(String(s.mpBalance.at).slice(11,16))}</small>`:'';
  return `<p class="cn-total"><small>Saldo total</small> <strong>${known.length?money(total):'—'}</strong> ${sync} ${mpBal}</p>`;
@@ -114,14 +114,16 @@ function movLine(a){
  const real=realMp(a),diff=real===null?null:real-mb.value;
  return `<small class="cn-mov">Por movimientos desde ${esc(fmtDate(a.cut||start))}: <b>${money(mb.value)}</b> (${mb.count} mov.${mb.skipped?`, ${mb.skipped} sin dirección o importe`:''})${diff===null?'':` · diferencia con el real: <b class="${diff===0?'cn-ok':'cn-bad'}">${diff===0?'cuadra':money(diff)}</b>`}</small>`;
 }
+const isOff=id=>!!(s&&s.off&&s.off.has(String(id)));
+const cardAttr=a=>`class="cn-card ${isOff(a.id)?'cn-off':'cn-sel'}" data-acc="${esc(a.id)}" role="button" tabindex="0" aria-pressed="${isOff(a.id)?'false':'true'}" title="Filtrar por ${esc(a.name)}"`;
 function accountCard(a,bl){
  if(mode==='hist'){
   const gap=a.opening===null?null:a.opening-bl.computed,pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
-  return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${money(bl.computed)}</strong><small>Según lo registrado hasta el ${esc(fmtDate(start))}</small>${a.opening!==null?`<small>Saldo real al ${esc(fmtDate(start))}: <b>${money(a.opening)}</b></small><small>${gap===0?'Historia completa':'Falta reconstruir '+money(gap)}</small>`:''}${pend}</article>`;
+  return `<article ${cardAttr(a)}><small>${esc(a.name)}</small><strong>${money(bl.computed)}</strong><small>Según lo registrado hasta el ${esc(fmtDate(start))}</small>${a.opening!==null?`<small>Saldo real al ${esc(fmtDate(start))}: <b>${money(a.opening)}</b></small><small>${gap===0?'Historia completa':'Falta reconstruir '+money(gap)}</small>`:''}${pend}</article>`;
  }
- if(/mercado/i.test(a.name)){const mb=movementBalance(a,s.movements,start),real=realMp(a);return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${mb?money(mb.value):'Sin saldo inicial'}</strong>${real!==null?`<small class="cn-mp-real${mb&&mb.value===real?' cn-ok':''}">${money(real)}</small>`:''}</article>`;}
+ if(/mercado/i.test(a.name)){const mb=movementBalance(a,s.movements,start),real=realMp(a);return `<article ${cardAttr(a)}><small>${esc(a.name)}</small><strong>${mb?money(mb.value):'Sin saldo inicial'}</strong>${real!==null?`<small class="cn-mp-real${mb&&mb.value===real?' cn-ok':''}">${money(real)}</small>`:''}</article>`;}
  const pend=bl.pending.count?`<small class="oc-warn-text">${bl.pending.count} por completar · ${money(bl.pending.sum)}</small>`:'<small>Todo al día</small>';
- return `<article class="cn-card"><small>${esc(a.name)}</small><strong>${realMp(a)!==null?money(realMp(a)):bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${realMp(a)!==null?`<small>Saldo real de Mercado Pago al ${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))} ${esc(String(s.mpBalance.at||'').slice(11,16))} · según lo clasificado ${bl.computed===null?'—':money(bl.computed)}</small>`:''}${pend}${movLine(a)}</article>`;
+ return `<article ${cardAttr(a)}><small>${esc(a.name)}</small><strong>${realMp(a)!==null?money(realMp(a)):bl.computed===null?'Sin saldo inicial':money(bl.computed)}</strong>${realMp(a)!==null?`<small>Saldo real de Mercado Pago al ${esc(fmtDate(String(s.mpBalance.at||'').slice(0,10)))} ${esc(String(s.mpBalance.at||'').slice(11,16))} · según lo clasificado ${bl.computed===null?'—':money(bl.computed)}</small>`:''}${pend}${movLine(a)}</article>`;
 }
 function controls(m){
  const c=m.classification,list=conceptsFor(m),vehicle=c?.vehicleOperation,miss=missing(m);
@@ -146,7 +148,7 @@ function rowMarkup(m,bl,tab){
  return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${quick?' cn-gray':''}"><div><small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div><div class="cn-side">${right}${quick?'':gear(m)}</div></article>`;
 }
 function draw(el){
- const hist=mode==='hist',infos=accountsInfo(),bal=balances(infos,s.movements,start,mode),all=s.movements.filter(m=>inRange(m,start,mode));
+ const hist=mode==='hist',infos=accountsInfo(),bal=balances(infos,s.movements,start,mode),all=s.movements.filter(m=>inRange(m,start,mode)&&!isOff(m.accountId));
  const byDate=(a,b)=>(b.date||'').localeCompare(a.date||'');
  const todo=all.filter(m=>!isComplete(m)&&!isQuickOpen(m)).sort(byDate),done=all.filter(isComplete).sort(byDate),quick=all.filter(isQuickOpen).sort(byDate);
  const tabs=s.tab;if(!tabs[mode])tabs[mode]=todo.length?'completar':'movimientos';const tab=tabs[mode];
@@ -187,6 +189,7 @@ function wire(el){
  const more=el.querySelector('#cn-more');if(more)more.onclick=()=>{s.limit+=100;draw(el);};
  const mp=el.querySelector('#cn-mp');if(mp)mp.onclick=()=>syncMp(el);
  const setupBtn=el.querySelector('#cn-setup');if(setupBtn)setupBtn.onclick=()=>setupDialog(el);
+ el.querySelectorAll('[data-acc]').forEach(c=>{const tgl=()=>{const id=c.dataset.acc,ids=accountsInfo().map(a=>String(a.id));if(s.off.has(id))s.off.delete(id);else{s.off.add(id);if(ids.every(x=>s.off.has(x)))s.off.clear();}s.limit=80;draw(el);};c.onclick=tgl;c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tgl();}};});
  el.querySelectorAll('[data-gear]').forEach(b=>b.onclick=()=>{s.gear=s.gear===b.dataset.gear?'':b.dataset.gear;draw(el);});
  el.querySelectorAll('[data-flip]').forEach(b=>b.onclick=async()=>{
   const m=s.movements.find(x=>x.id===b.dataset.flip);if(!m||m.saving)return;s.gear='';s.message='Cambiando…';draw(el);

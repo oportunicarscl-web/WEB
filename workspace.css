@@ -193,3 +193,8 @@ body.workspace-open{
 #oc-workspace .cn-flip{display:flex;gap:6px}
 #oc-workspace .cn-flip button{font-size:12px;padding:4px 10px}
 #oc-workspace .cn-mp-real{color:#b8443b;font-weight:600}#oc-workspace .cn-mp-real.cn-ok{color:#2f6b3b}
+
+#oc-workspace .cn-card[data-acc]{cursor:pointer;transition:opacity .15s,box-shadow .15s,border-color .15s;border:2px solid transparent}
+#oc-workspace .cn-card.cn-sel{border-color:#1f1710;box-shadow:0 0 0 1px #1f1710 inset}
+#oc-workspace .cn-card.cn-off{opacity:.45}
+#oc-workspace .cn-card[data-acc]:focus-visible{outline:2px solid #b4935f;outline-offset:2px}
