@@ -178,3 +178,8 @@ body.workspace-open{
 #oc-workspace .cn-undo{color:#a8321f}#oc-workspace .cn-edit{opacity:.8}
 
 #oc-workspace .cn-total{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:14px 0 0}#oc-workspace .cn-total strong{font-size:26px}#oc-workspace .cn-sync{background:none;border:0;box-shadow:none;padding:0 4px;font-size:18px;line-height:1;color:#8c6d3f;opacity:.6;cursor:pointer;min-height:0}#oc-workspace .cn-sync:hover{opacity:1}#oc-workspace .cn-sync.spin{animation:cn-spin 1s linear infinite}@keyframes cn-spin{to{transform:rotate(360deg)}}
+
+/* Listas desplegables de Caja: color fijo (sin cambios por foco, tema del sistema ni recarga) */
+#oc-caja-nueva select,#oc-workspace .cn-controls select,#oc-workspace .cn-controls input{color-scheme:light;background-color:#fffaf2!important;color:#3b2f21!important;-webkit-text-fill-color:#3b2f21;border:1px solid #b4935f;border-radius:6px;padding:10px;font:inherit;transition:none!important;-webkit-appearance:menulist;appearance:auto}
+#oc-caja-nueva select:focus,#oc-caja-nueva select:hover,#oc-caja-nueva select:active,#oc-workspace .cn-controls select:focus,#oc-workspace .cn-controls select:hover{background-color:#fffaf2!important;color:#3b2f21!important;outline:2px solid #b4935f;outline-offset:1px}
+#oc-caja-nueva select option,#oc-workspace .cn-controls select option{background:#fffaf2;color:#3b2f21}
