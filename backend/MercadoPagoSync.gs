@@ -92,7 +92,7 @@ function osMpWrite_(fin,row){
 }
 // Agrega los eventos que no existen y completa fecha/dirección en filas antiguas de MP que las tenían vacías. Devuelve conteos.
 function osMpApply_(fin,cuenta,events){
- const idx=osMpIndex_(fin,cuenta),now=new Date().toISOString(),out={agregados:0,completados:0,fallidos:0,error:''};
+ const idx=osMpIndex_(fin,cuenta),now=new Date().toISOString(),t0=Date.now(),out={agregados:0,completados:0,fallidos:0,error:''};
  events.forEach(e=>{
   const ex=idx[e.id];
   const row={movimiento_id:'MP-'+e.id,cuenta_id:cuenta,fecha_operacion:e.fecha,moneda:'CLP',direccion:e.direccion,monto:e.monto,descripcion:e.descripcion,referencia:'MP-'+e.id,hash_origen:'MP|'+e.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'IMPORTACION',calidad:'CONFIRMADO',version:1,created_at:now,created_by:'MERCADO_PAGO_API',updated_at:now,updated_by:'MERCADO_PAGO_API',monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:e.tipo_fuente,estado_fuente:'approved',operacion_origen_id:e.id,fecha_original:e.iso,estado_importacion:'CONFIRMADO',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',lote_importacion_id:'MP-API'};
@@ -100,7 +100,7 @@ function osMpApply_(fin,cuenta,events){
    const patch={};if(!osDate_(osClean_(ex).fecha_operacion))patch.fecha_operacion=e.fecha;if(!ex.direccion)patch.direccion=e.direccion;
    // Completa campos vacíos de filas a medio escribir (sin tocar clasificación ni lo ya cargado)
    ['monto','descripcion','referencia','hash_origen','tipo_fuente','estado_fuente','operacion_origen_id','fecha_original','estado_importacion','estado_clasificacion','estado_conciliacion','lote_importacion_id','monto_confirmado','incluir_en_saldo','moneda','ambiente','estado_registro','origen','calidad','created_at','created_by'].forEach(k=>{if((ex[k]===undefined||ex[k]===''||ex[k]===null)&&fin.headers.indexOf(k)>=0)patch[k]=row[k];});
-   if(Object.keys(patch).length&&out.completados<300){patch.version=Number(ex.version||1)+1;patch.updated_at=now;patch.updated_by='MERCADO_PAGO_API';try{ocPatchRow_(fin,ex._row,patch);Object.assign(ex,patch);out.completados++;}catch(err){out.fallidos=(out.fallidos||0)+1;out.error=String(err.message);}}
+   if(Object.keys(patch).length&&out.completados<60&&Date.now()-t0<80000){patch.version=Number(ex.version||1)+1;patch.updated_at=now;patch.updated_by='MERCADO_PAGO_API';try{ocPatchRow_(fin,ex._row,patch);Object.assign(ex,patch);out.completados++;}catch(err){out.fallidos=(out.fallidos||0)+1;out.error=String(err.message);}}
    return;
   }
   osMpWrite_(fin,row);fin.rows.push(row);idx[e.id]=row;out.agregados++;
