@@ -58,9 +58,10 @@ function osMpPaymentEvent_(p,me){
 function osMpReportRows_(csv){
  const first=String(csv).split(/\r?\n/,1)[0],sep=first.split(';').length>first.split(',').length?';':',';
  const t=osCsv_(String(csv).replace(/^﻿/,''),sep);if(t.length<2)return {rows:[],balance:null,balanceAt:''};
- const h=t[0].map(x=>String(x).trim().toUpperCase()),ix=k=>h.indexOf(k),rows=[];let balance=null,balanceAt='';
+ const h=t[0].map(x=>String(x).trim().toUpperCase()),ix=k=>h.indexOf(k),rows=[];let balance=null,balanceAt='',summary=null;
  t.slice(1).forEach(c=>{
   const get=k=>ix(k)>=0?String(c[ix(k)]||'').trim():'',id=get('SOURCE_ID'),desc=get('DESCRIPTION').toLowerCase(),day=get('DATE').slice(0,10);
+  if(!id&&!day&&get('NET_CREDIT_AMOUNT')!==''&&get('BALANCE_AMOUNT')!==''&&osMpNum_(get('NET_CREDIT_AMOUNT'))>0)summary=Math.round(osMpNum_(get('NET_CREDIT_AMOUNT')));
   if(!id||!/^\d{4}-\d{2}-\d{2}$/.test(day))return;
   if(get('BALANCE_AMOUNT')!==''){balance=Math.round(osMpNum_(get('BALANCE_AMOUNT')));balanceAt=get('DATE');}
   if(desc!=='payment'&&desc!=='payout')return;
@@ -68,8 +69,10 @@ function osMpReportRows_(csv){
   const dir=cr>0&&db<=0?'ENTRADA':db>0&&cr<=0?'SALIDA':'';const amount=cr>0?cr:db;if(!dir||!(amount>0))return;
   rows.push({id:desc==='payout'?'PAYOUT-'+id:id,fecha:day,direccion:dir,monto:amount,descripcion:desc==='payout'?'Retiro desde Mercado Pago':(dir==='ENTRADA'?'Dinero recibido en Mercado Pago':'Pago o transferencia enviada'),tipo_fuente:desc,iso:get('DATE'),esRetiro:desc==='payout'});
  });
- return {rows:rows,balance:balance,balanceAt:balanceAt};
+ return {rows:rows,balance:summary!==null?summary:balance,balanceAt:balanceAt,summary:summary};
 }
+// Mercado Pago marca la hora de los reportes de liberaciones con -04:00 pero es UTC.
+function osMpRepTime_(r){const v=String(r&&r.date_created||''),m=/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?-04:00$/.exec(v);return m?Date.parse(m[1]+'Z'):Date.parse(v);}
 // ---- hoja ----
 function osMpAccount_(){
  const a=ocTable_('OC_MAESTROS_ID','CUENTAS_FINANCIERAS').rows.filter(x=>ocProd_(x)&&x.estado_registro!=='ANULADO'&&/mercado/i.test(String(x.nombre||'')));
@@ -130,8 +133,10 @@ function osMpStart_(){
  // Ventana del reporte >= 30 días: Mercado Pago no generó reportes de ventanas cortas (4 días) pero sí los de 30 y 60 días.
  const today30=osMpShift_(Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd'),30),repBegin=begin<today30?begin:today30;
  try{const l0=osMpJson_('/v1/account/release_report/list');before=(Array.isArray(l0)?l0:[]).map(r=>String(r.id));}catch(e){if(/^TOKEN/.test(e.message))throw e;}
- try{const b=osMpFetch_('/v1/account/release_report',{method:'post',contentType:'application/json',payload:JSON.stringify({begin_date:repBegin+'T03:00:00Z',end_date:Utilities.formatDate(new Date(),'UTC',"yyyy-MM-dd'T'HH:mm:ss'Z'")})});
-  if(b.getResponseCode()===202){const j=JSON.parse(b.getContentText());reportId=String(j.id||'');osMpSet_('OC_MP_REPORT_REQ',JSON.stringify({id:reportId,at:Date.now(),begin:begin,before:before}));}
+ const lastPost=Number(osMpProp_('OC_MP_LAST_POST')||0);
+ if(Date.now()-lastPost<15*60000){reportId='reuso';let all=[];try{all=before;}catch(e){}osMpSet_('OC_MP_REPORT_REQ',JSON.stringify({id:'',at:Date.now()-151000,begin:begin,before:all}));}
+ else try{const b=osMpFetch_('/v1/account/release_report',{method:'post',contentType:'application/json',payload:JSON.stringify({begin_date:repBegin+'T03:00:00Z',end_date:Utilities.formatDate(new Date(),'UTC',"yyyy-MM-dd'T'HH:mm:ss'Z'")})});
+  if(b.getResponseCode()===202){const j=JSON.parse(b.getContentText());reportId=String(j.id||'');osMpSet_('OC_MP_LAST_POST',String(Date.now()));osMpSet_('OC_MP_REPORT_REQ',JSON.stringify({id:reportId,at:Date.now(),begin:begin,before:before}));}
   else reportWarn='Mercado Pago no aceptó pedir el reporte de saldo (HTTP '+b.getResponseCode()+'): '+String(b.getContentText()).slice(0,160);}catch(e){if(/^TOKEN/.test(e.message))throw e;reportWarn='No pude pedir el reporte de saldo: '+String(e.message).slice(0,160);}
  // 2) Pagos aprobados y autorizados ("Por liberar") desde el último movimiento − 3 días
  const payments=osMpSearchRange_(begin+'T00:00:00.000-03:00'),events=payments.map(p=>osMpPaymentEvent_(p,me)).filter(Boolean);
@@ -144,14 +149,22 @@ function osMpCheck_(){
  const cuenta=osMpAccount_(),fin=osMpFin_();let req;try{req=JSON.parse(osMpProp_('OC_MP_REPORT_REQ')||'null');}catch(e){req=null;}
  if(!req)return {fase:'listo',agregados:0,completados:0};
  const list=osMpJson_('/v1/account/release_report/list'),since=req.at-120000;
- const ready=(Array.isArray(list)?list:[]).filter(r=>r.file_name&&(Array.isArray(req.before)?req.before.indexOf(String(r.id))<0:(String(r.id)===String(req.id)||Date.parse(r.date_created||'')>=since||Date.parse(r.date_created||'')>=Date.now()-45*60000))).sort((a,b)=>Date.parse(b.date_created||'')-Date.parse(a.date_created||''));
- if(!ready.length){if(Date.now()-req.at>20*60000){osMpSet_('OC_MP_REPORT_REQ','');return {fase:'listo',agregados:0,completados:0,avisos:['El reporte de Mercado Pago no llegó a tiempo; vuelve a intentar.']};}return {fase:'reporte_pendiente',agregados:0,completados:0};}
+ const ready=(Array.isArray(list)?list:[]).filter(r=>r.file_name&&(Array.isArray(req.before)?req.before.indexOf(String(r.id))<0:(String(r.id)===String(req.id)||osMpRepTime_(r)>=since))).sort((a,b)=>osMpRepTime_(b)-osMpRepTime_(a));
+ let stale='';
+ if(!ready.length){
+  if(Date.now()-req.at<150000)return {fase:'reporte_pendiente',agregados:0,completados:0};
+  // El reporte nuevo no salió: usa el más reciente que ya existe (retiros y saldo con su hora de corte).
+  const old=(Array.isArray(list)?list:[]).filter(r=>r.file_name).sort((a,b)=>osMpRepTime_(b)-osMpRepTime_(a));
+  if(!old.length){osMpSet_('OC_MP_REPORT_REQ','');return {fase:'listo',agregados:0,completados:0,avisos:['Mercado Pago no tiene reportes de saldo disponibles; vuelve a intentar más tarde.']};}
+  ready.push(old[0]);stale=Utilities.formatDate(new Date(osMpRepTime_(old[0])),'America/Santiago','dd-MM HH:mm');
+ }
  const f=osMpFetch_('/v1/account/release_report/'+encodeURIComponent(ready[0].file_name));
  if(f.getResponseCode()!==200)return {fase:'reporte_pendiente',agregados:0,completados:0};
  const parsed=osMpReportRows_(f.getContentText()),r=osMpApply_(fin,cuenta,parsed.rows);
  osMpSet_('OC_MP_REPORT_REQ','');
- if(parsed.balance!==null)osMpSet_('OC_MP_BALANCE',JSON.stringify({saldo:parsed.balance,at:parsed.balanceAt}));
- return {fase:'listo',agregados:r.agregados,completados:r.completados,avisos:r.fallidos?['No pude completar '+r.fallidos+' filas antiguas: '+r.error]:[],retiros:parsed.rows.filter(x=>x.esRetiro).length,saldoMercadoPago:parsed.balance===null?null:{saldo:parsed.balance,at:parsed.balanceAt}};
+ const repAt=Utilities.formatDate(new Date(osMpRepTime_(ready[0])),'America/Santiago',"yyyy-MM-dd'T'HH:mm"),bal=parsed.balance===null?null:{saldo:parsed.balance,at:repAt};
+ if(bal)osMpSet_('OC_MP_BALANCE',JSON.stringify(bal));
+ return {fase:'listo',agregados:r.agregados,completados:r.completados,avisos:(r.fallidos?['No pude completar '+r.fallidos+' filas antiguas: '+r.error]:[]).concat(stale?['Mercado Pago no generó un reporte nuevo; usé el último disponible ('+stale+'). Retiros y saldo llegan hasta esa hora.']:[]),retiros:parsed.rows.filter(x=>x.esRetiro).length,saldoMercadoPago:bal};
 }
 function osMpSync_(p,actor){
  if(!actor||!actor.manage)throw Error('Acceso restringido.');
