@@ -75,7 +75,7 @@ function osMpAccount_(){
  if(a.length!==1)throw Error('No encuentro una única cuenta «Mercado Pago» en Cuentas.');return String(a[0].cuenta_id);
 }
 function osMpFin_(){return ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS');}
-function osMpIndex_(fin,cuenta){const k={};fin.rows.forEach(r=>{if(r.cuenta_id===cuenta&&String(r.operacion_origen_id||'')!=='')k[String(r.operacion_origen_id)]=r;});return k;}
+function osMpIndex_(fin,cuenta){const k={};fin.rows.forEach(r=>{if(r.cuenta_id!==cuenta)return;if(String(r.operacion_origen_id||'')!=='')k[String(r.operacion_origen_id)]=r;const m=/^MP-(\d+)$/.exec(String(r.movimiento_id||''));if(m&&!k[m[1]])k[m[1]]=r;});return k;}
 function osMpLastDay_(fin,cuenta){
  const today=Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd');let last='';
  fin.rows.forEach(m=>{if(m.cuenta_id===cuenta&&ocProd_(m)){const d=osDate_(osClean_(m).fecha_operacion)||'';if(d&&d>last&&d<=today)last=d;}});return last;
@@ -95,12 +95,14 @@ function osMpApply_(fin,cuenta,events){
  const idx=osMpIndex_(fin,cuenta),now=new Date().toISOString(),out={agregados:0,completados:0,fallidos:0,error:''};
  events.forEach(e=>{
   const ex=idx[e.id];
+  const row={movimiento_id:'MP-'+e.id,cuenta_id:cuenta,fecha_operacion:e.fecha,moneda:'CLP',direccion:e.direccion,monto:e.monto,descripcion:e.descripcion,referencia:'MP-'+e.id,hash_origen:'MP|'+e.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'IMPORTACION',calidad:'CONFIRMADO',version:1,created_at:now,created_by:'MERCADO_PAGO_API',updated_at:now,updated_by:'MERCADO_PAGO_API',monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:e.tipo_fuente,estado_fuente:'approved',operacion_origen_id:e.id,fecha_original:e.iso,estado_importacion:'CONFIRMADO',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',lote_importacion_id:'MP-API'};
   if(ex){
    const patch={};if(!osDate_(osClean_(ex).fecha_operacion))patch.fecha_operacion=e.fecha;if(!ex.direccion)patch.direccion=e.direccion;
+   // Completa campos vacíos de filas a medio escribir (sin tocar clasificación ni lo ya cargado)
+   ['monto','descripcion','referencia','hash_origen','tipo_fuente','estado_fuente','operacion_origen_id','fecha_original','estado_importacion','estado_clasificacion','estado_conciliacion','lote_importacion_id','monto_confirmado','incluir_en_saldo','moneda','ambiente','estado_registro','origen','calidad','created_at','created_by'].forEach(k=>{if((ex[k]===undefined||ex[k]===''||ex[k]===null)&&fin.headers.indexOf(k)>=0)patch[k]=row[k];});
    if(Object.keys(patch).length&&out.completados<300){patch.version=Number(ex.version||1)+1;patch.updated_at=now;patch.updated_by='MERCADO_PAGO_API';try{ocPatchRow_(fin,ex._row,patch);Object.assign(ex,patch);out.completados++;}catch(err){out.fallidos=(out.fallidos||0)+1;out.error=String(err.message);}}
    return;
   }
-  const row={movimiento_id:'MP-'+e.id,cuenta_id:cuenta,fecha_operacion:e.fecha,moneda:'CLP',direccion:e.direccion,monto:e.monto,descripcion:e.descripcion,referencia:'MP-'+e.id,hash_origen:'MP|'+e.id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'IMPORTACION',calidad:'CONFIRMADO',version:1,created_at:now,created_by:'MERCADO_PAGO_API',updated_at:now,updated_by:'MERCADO_PAGO_API',monto_confirmado:'SI',incluir_en_saldo:'SI',tipo_fuente:e.tipo_fuente,estado_fuente:'approved',operacion_origen_id:e.id,fecha_original:e.iso,estado_importacion:'CONFIRMADO',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',lote_importacion_id:'MP-API'};
   osMpWrite_(fin,row);fin.rows.push(row);idx[e.id]=row;out.agregados++;
  });
  return out;
