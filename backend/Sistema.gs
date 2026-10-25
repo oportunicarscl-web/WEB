@@ -82,12 +82,13 @@ function osSave_(p,actor){
  const required={VEHICULOS:['patente','marca','modelo'],AUTOS_OPERACION:['modalidad','fecha_ingreso','estado_auto'],ACTIVIDADES_AUTOS:['vehiculo_id','fecha','tipo','estado'],COSTOS_FIJOS:['nombre','monto_mensual','dia_pago','habilitado'],PROYECCIONES:['fecha','direccion','tipo','descripcion','monto'],PRESTAMOS:['nombre','sentido','saldo_inicial','fecha_saldo']}[table];
  required.forEach(k=>{if(patch[k]==='')throw Error('Completa '+k);});
  if(patch.dia_pago!==undefined&&(patch.dia_pago<1||patch.dia_pago>28))throw Error('Día de pago entre 1 y 28.');
- if(table!=='VEHICULOS'&&patch.vehiculo_id&&ocInventory_().filter(v=>v.id===patch.vehiculo_id).length!==1)throw Error('Auto no encontrado.');
+ if(table!=='VEHICULOS'&&patch.vehiculo_id&&ocInventory_().filter(v=>v.id===String(patch.vehiculo_id)).length!==1)throw Error('Auto no encontrado.');
  if(table==='AUTOS_OPERACION'&&patch.estado_auto==='VENDIDO'&&(!patch.fecha_venta||patch.precio_venta===''))throw Error('Completa fecha y precio de venta.');
  if(table==='VEHICULOS'&&ocInventory_().some(v=>v.id!==id&&v.patente.replace(/[^A-Z0-9]/gi,'').toUpperCase()===patch.patente.replace(/[^A-Z0-9]/gi,'').toUpperCase()))throw Error('La patente ya existe. Edita su ficha.');
  if(patch.fecha_venta&&patch.fecha_ingreso&&patch.fecha_venta<patch.fecha_ingreso)throw Error('La venta no puede preceder al ingreso.');
  if(table==='PROYECCIONES'&&patch.tipo==='CUOTA_VENTA'&&(patch.direccion!=='ENTRADA'||!patch.vehiculo_id))throw Error('Una cuota de venta requiere auto y entrada.');
- const t=osTable_(table),matches=t.rows.filter(r=>r[def.key]===id);
+ // Sheets devuelve IDs numéricos (p. ej. 103) como número: se comparan como texto para no crear filas duplicadas.
+ const t=osTable_(table),matches=t.rows.filter(r=>ocProd_(r)&&String(r[def.key]).trim()===id);
  if(matches.length>1)throw Error('Identificador duplicado.');
  const prior=matches[0];if(Number(prior?prior.version:0)!==p.expectedVersion)throw Error('El registro cambió. Recarga antes de guardar.');
  const now=new Date().toISOString();Object.assign(patch,{ambiente:'PRODUCCION',estado_registro:'ACTIVO',version:(prior?Number(prior.version):0)+1,created_at:prior?prior.created_at:now,created_by:prior?prior.created_by:actor.id,updated_at:now,updated_by:actor.id});
@@ -138,4 +139,17 @@ function osClassifyLinks_(p,c,r,vehicle,actor){
  if(p.forecastId){const fs=osRows_('PROYECCIONES').filter(f=>f.proyeccion_id===p.forecastId);if(fs.length!==1||fs[0].direccion!==r.direccion||fs[0].vehiculo_id&&fs[0].vehiculo_id!==vehicle)throw Error('Proyección incompatible.');patch.proyeccion_id=p.forecastId;}
  osAudit_(actor,'SOLICITUD_CLASIFICAR','MOVIMIENTOS_BANCARIOS',r.movimiento_id,{concepto:c.id,vinculos:patch,version_anterior:r.version});
  return patch;
+}
+// Ejecutar una vez desde el editor: deja una sola ficha activa por auto en AUTOS_OPERACION (la más reciente) y anula el resto.
+function limpiarFichasDuplicadas(){
+ const lock=LockService.getScriptLock();if(!lock.tryLock(15000))throw Error('Sistema ocupado.');
+ try{
+  const t=osTable_('AUTOS_OPERACION'),groups={},now=new Date().toISOString(),out=[];
+  t.rows.filter(ocProd_).forEach(r=>{const k=String(r.vehiculo_id).trim();(groups[k]=groups[k]||[]).push(r);});
+  Object.keys(groups).filter(k=>groups[k].length>1).forEach(k=>{
+   const rows=groups[k].sort((a,b)=>String(b.updated_at||b.created_at).localeCompare(String(a.updated_at||a.created_at))||b._row-a._row);
+   rows.slice(1).forEach(r=>{osAudit_({id:'LIMPIEZA'},'ANULAR_FICHA_DUPLICADA','AUTOS_OPERACION',k,{fila:r._row,anulada:osClean_(r),conservada:rows[0]._row});ocPatchRow_(t,r._row,{estado_registro:'ANULADO',updated_at:now,updated_by:'LIMPIEZA'});out.push({auto:k,fila:r._row});});
+  });
+  SpreadsheetApp.flush();return {anuladas:out};
+ }finally{lock.releaseLock();}
 }
