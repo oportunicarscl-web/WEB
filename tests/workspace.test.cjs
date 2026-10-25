@@ -11,7 +11,7 @@ test('El nombre visible y el correo no conceden permisos',()=>{
  assert.equal(resolveRole(null),null);
 });
 test('Separación entre operación, gerencia y administración',()=>{
- assert.equal(roles.operativo.home,'finanzas');assert.equal(roles.gerencial.home,'finanzas');
+ assert.equal(roles.operativo.home,'finanzas');assert.equal(roles.gerencial.home,'gerencial');assert.equal(roles.administrador.home,'gerencial');
  assert.equal(canAccess('operativo','finanzas'),true);
  assert.equal(canAccess('administrador','contabilidad'),false);
  assert.equal(canAccess('operativo','parametros'),false);

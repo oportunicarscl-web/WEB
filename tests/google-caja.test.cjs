@@ -66,3 +66,9 @@ test('Mercado Pago: fecha, dirección sugerida y operaciones no efectivas', () =
  assert.strictEqual(G.inferDirection({tipo_fuente:'regular_payment',descripcion:'Dinero recibido en Mercado Pago'}),'ENTRADA');
  assert.strictEqual(G.inferDirection({tipo_fuente:'regular_payment',descripcion:'Por liberar · Compra Entel'}),'SALIDA');
  console.log('ok inferencia por descripción MP');}
+
+test('Ficha repetida en la hoja (ID numérico): vale la más reciente de cada auto',()=>{
+ const ctx={};ctx.window=ctx;vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../google-caja.js'),'utf8'),ctx);const {latestPerCar}=ctx.OCGoogleCaja;
+ const rows=[{vehiculo_id:103,estado_auto:'PREPARACION',updated_at:'2026-10-20'},{vehiculo_id:103,estado_auto:'DISPONIBLE',costo_compra:4000000,updated_at:'2026-10-25T03:40:55Z'},{vehiculo_id:'abc',estado_auto:'DISPONIBLE',updated_at:'2026-10-20'}];
+ const out=latestPerCar(rows);assert.equal(out.length,2);const m=out.find(r=>r.vehiculo_id==='103');assert.equal(m.estado_auto,'DISPONIBLE');assert.equal(m.costo_compra,4000000);
+});

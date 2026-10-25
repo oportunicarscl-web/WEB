@@ -34,7 +34,7 @@
  }
 
  function createStore(call,loaded){
-  const D={strictFrom:CASH_START,inventory:loaded.inventory,operations:loaded.operations,activities:loaded.activities,movements:loaded.movements.filter(effective),hidden:loaded.movements.filter(r=>!effective(r)).length,accounts:loaded.accounts,forecasts:loaded.forecasts,loans:loaded.loans,companyStart:loaded.companyStart||'',sync:loaded.sync||null,canFinance:true};
+  const D={strictFrom:CASH_START,inventory:loaded.inventory,operations:latestPerCar(loaded.operations||[]),activities:loaded.activities,movements:loaded.movements.filter(effective),hidden:loaded.movements.filter(r=>!effective(r)).length,accounts:loaded.accounts,forecasts:loaded.forecasts,loans:loaded.loans,companyStart:loaded.companyStart||'',sync:loaded.sync||null,canFinance:true};
   let cache=null;const invalidate=()=>{cache=null;};
   const accountNames=()=>Object.fromEntries(D.accounts.map(a=>[a.cuenta_id,a.nombre]));
   function state(){
@@ -72,6 +72,8 @@
   };
  }
 
+ // Sheets puede traer la misma ficha repetida (IDs numéricos como 103): queda la versión más reciente de cada auto.
+ function latestPerCar(rows){const by=new Map();rows.forEach(r=>{const k=String(r.vehiculo_id).trim(),o=by.get(k),t=x=>String(x.updated_at||x.created_at||'');if(!o||t(r)>=t(o))by.set(k,{...r,vehiculo_id:k});});return [...by.values()];}
  async function connect(client,user){
   const endpoint=root.OCGoogleConfig?.endpoint;
   if(!endpoint)throw Error('La conexión con Google todavía no está activada.');
@@ -108,5 +110,5 @@
    applyLocal:store.applyLocal
   }};
  }
- root.OCGoogleCaja={CASH_START,connect,mapMovement,createStore,parseDay,effective,inferDirection};
+ root.OCGoogleCaja={CASH_START,connect,latestPerCar,mapMovement,createStore,parseDay,effective,inferDirection};
 })(window);

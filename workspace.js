@@ -11,8 +11,8 @@
   ];
   const roles = {
     operativo:{label:'Operaciones',home:'finanzas',areas:['finanzas','historica','operaciones','analitica','compromisos']},
-    gerencial:{label:'Gerencia',home:'finanzas',areas:areas.map(a=>a.id)},
-    administrador:{label:'Administración',home:'finanzas',areas:areas.map(a=>a.id)},
+    gerencial:{label:'Gerencia',home:'gerencial',areas:areas.map(a=>a.id)},
+    administrador:{label:'Administración',home:'gerencial',areas:areas.map(a=>a.id)},
     finanzas:{label:'Finanzas',home:'finanzas',areas:['finanzas','historica','gestion','analitica','parametros']}
   };
   const assignments = Object.freeze({jt:'operativo',mmusa:'operativo',alex:'gerencial',gonzalo:'gerencial'});
@@ -49,7 +49,7 @@
     root.OCCajaNueva?.setup({preview,...options.caja,cashStart:cut,isAdmin:admin});
     if(admin)root.OCAdmin?.setup({...options.caja});
     root.OCSistema?.setup({...options.system,canManage:options.profile?.manage});
-    role=preview?resolveRole(options.user):(Object.hasOwn(roles,options.profile?.role)?options.profile.role:null);view=role?roles[role].home:'pendiente';
+    role=preview?resolveRole(options.user):(Object.hasOwn(roles,options.profile?.role)?options.profile.role:null);view=role?(admin&&['gerencial','administrador','finanzas'].includes(role)?'gerencial':roles[role].home):'pendiente';
     host=document.createElement('div');host.id='oc-workspace';
     document.body.append(host);document.body.classList.add('workspace-open');
     render();
