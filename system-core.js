@@ -61,7 +61,8 @@ function reports(d,today){
  const fixed=fixedFromCaja(confirmed,today);
  // Capital de los socios. El total declarado (hoja APORTES_CAPITAL_SOCIOS) incluye los aportes que se van pasando a la caja de a poco,
  // así que no se suman: vale el mayor entre lo declarado y lo ya registrado en caja (concepto de aporte, aunque el importe siga por confirmar).
- const contribs=(d.contributions||[]).filter(active).filter(x=>x.estado!=='ANULADO'),inCash=counted.filter(m=>m.naturaleza==='APORTE_CAPITAL'&&m.direccion==='ENTRADA');
+ // Las filas con movimiento_id son la ficha de un aporte que ya está en la caja (se crean al clasificarlo); el total en bruto es el que no tiene movimiento.
+ const contribs=(d.contributions||[]).filter(active).filter(x=>x.estado!=='ANULADO'&&!String(x.movimiento_id||'').trim()),inCash=counted.filter(m=>m.naturaleza==='APORTE_CAPITAL'&&m.direccion==='ENTRADA');
  const socioOf=m=>{const t=String(m.socio||'').trim()||String(m.descripcion||'').trim();return t?t.toLowerCase().replace(/(^|\s)\S/g,x=>x.toUpperCase()):'Sin socio';};
  const bySocio={};inCash.forEach(m=>{const k=socioOf(m);bySocio[k]=(bySocio[k]||0)+Number(m.monto);});
  const capital={declared:contribs.reduce((s,x)=>s+(n(x.monto)||0),0),inCash:inCash.reduce((s,m)=>s+Number(m.monto),0),bySocio,rows:contribs.map(x=>({id:x.aporte_id,socio:x.socio,fecha:x.fecha,monto:n(x.monto)}))};

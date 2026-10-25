@@ -56,3 +56,9 @@ test('Capital de socios: aporte ingresado a mano sin socio toma el nombre de la 
  const d=data();d.movements=[movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:4170000,descripcion:'ALEX'}),movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:5000000,socio:'Alex'})];
  const c=core.reports(d,'2026-10-25').capital;assert.equal(c.bySocio.Alex,9170000);assert.equal(c.bySocio['Sin socio'],undefined);
 });
+
+test('Capital de socios: las fichas de aporte ligadas a un movimiento no cuentan como total declarado',()=>{
+ const d=data();d.contributions=[{aporte_id:'APORTE-MP-1',socio:'Gonzalo',movimiento_id:'MP-1',monto:18750000,estado:'POR_REVISAR'},{aporte_id:'t',socio:'Socios',monto:133470000,estado:'REGISTRADO'}];
+ d.movements=[movement({movimiento_id:'MP-1',naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:18750000,socio:'Gonzalo'})];
+ const c=core.reports(d,'2026-10-25').capital;assert.equal(c.declared,133470000);assert.equal(c.inCash,18750000);assert.equal(c.total,133470000);
+});
