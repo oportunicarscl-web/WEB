@@ -222,7 +222,7 @@ function wire(el){
  el.querySelectorAll('[data-concept]').forEach(b=>b.onchange=()=>{
   if(!b.value)return;const m=s.movements.find(x=>x.id===b.dataset.concept),c=s.concepts.find(x=>x.id===b.value);
   try{const next=root.OCCaja.classify(m,c,m.classification?.vehicleId||null,s.inventory.map(v=>({...v,id:v.id})));
-   if(['APORTE_CAPITAL','PRESTAMO'].includes(c.nature)){s.message='Los aportes y préstamos se completan en la Caja histórica con su detalle.';draw(el);return;}
+   if(['APORTE_CAPITAL','PRESTAMO'].includes(c.nature)){if(mode==='hist'){linkDialog(el,next,b);return;}b.value='';s.message='Los aportes y préstamos se completan en la Caja histórica con su detalle.';draw(el);return;}
    persist(el,next);}catch(e){s.message=e.message;draw(el);}
  });
  el.querySelectorAll('[data-car]').forEach(b=>b.onchange=()=>{
@@ -254,6 +254,22 @@ async function autoMatch(el){
  if(n){s.message=n+' gastos registrados por atajo se machearon con su movimiento.';if(el.isConnected)draw(el);}
 }
 // Corregir un atajo mal ingresado (solo administrador): fecha, monto, ingreso/egreso, cuenta, concepto, auto y comentario.
+// Aportes y préstamos (solo Caja histórica): piden el socio o el préstamo antes de guardar.
+function linkDialog(el,next,select){
+ const c=next.classification||{},aporte=c.nature==='APORTE_CAPITAL',loans=config.loans||[];
+ const socios=[...new Set(s.movements.map(m=>String(m.socio||'').trim()).filter(Boolean))].sort();
+ const opt=(rows,cur)=>'<option value="">Elegir…</option>'+rows.map(([v,l])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(l)}</option>`).join('');
+ const d=document.createElement('dialog');d.className='oc-dialog';d.dataset.cnDialog='';
+ d.innerHTML=`<form><h2>${aporte?'Aporte de capital':'Préstamo'}</h2><p>${esc(fmtDate(next.date))} · ${esc(next.description||'')} · <b>${money(next.amount)}</b></p><div class="oc-caja-form">${aporte
+  ?`<label>Socio<input name="socio" list="cn-socios" required maxlength="80" value="${esc(next.socio||'')}" autocomplete="off"></label><datalist id="cn-socios">${socios.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>`
+  :`<label>Préstamo<select name="prestamoId" required>${opt(loans.map(l=>[String(l.prestamo_id),l.nombre||String(l.prestamo_id)]),next.prestamoId)}</select></label><label>Componente<select name="loanComponent" required>${opt([['DESEMBOLSO','Desembolso (entra el préstamo)'],['AMORTIZACION','Devolución de principal'],['INTERES','Interés']],next.loanComponent)}</select></label>${loans.length?'':'<p><small>No hay préstamos creados. Créalo primero en Compromisos no caja → Préstamos.</small></p>'}`}
+ </div><p role="status"></p><button type="submit"${!aporte&&!loans.length?' disabled':''}>Guardar</button> <button type="button" id="cn-cancel">Cancelar</button></form>`;
+ const close=()=>{if(select)select.value='';d.close();};
+ document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();d.querySelector('#cn-cancel').onclick=close;
+ d.querySelector('form').onsubmit=e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));
+  if(aporte)f.socio=String(f.socio||'').trim();if(aporte&&!f.socio){d.querySelector('[role=status]').textContent='Indica el socio.';return;}
+  d.close();persist(el,{...next,...f});};
+}
 function quickDialog(el,m){
  const c=m.classification,acc=accountsInfo(),carOf=id=>{const v=s.inventory.find(x=>String(x.id)===String(id));return v?carLabel(v):'';};
  const note=String(m.description||'').split(' · ').slice(c&&c.vehicleId?2:1).join(' · ');
