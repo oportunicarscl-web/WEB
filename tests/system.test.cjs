@@ -59,3 +59,13 @@ test('Capital de socios: sin datos en duro, es lo registrado en la caja con conc
  d.movements=[movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:36500000,socio:'Gonzalo',monto_confirmado:'NO',incluir_en_saldo:'NO'}),movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:5000000,socio:'Alex'})];
  const c=core.reports(d,'2026-10-25').capital;assert.equal(c.total,41500000);assert.equal(c.bySocio.Gonzalo,36500000);
 });
+
+test('Flujo mensual separa negocio, aportes de socios, gastos fijos y no fijos; utilidad de ventas del mes',()=>{
+ const d=data();d.accounts[0].saldo_inicial=0;d.operations=[{vehiculo_id:'v',modalidad:'PROPIO',fecha_ingreso:'2026-10-01',estado_auto:'VENDIDO',fecha_venta:'2026-10-10',precio_venta:1}];
+ d.movements=[movement({monto:9500,operacion_auto:'COMPRA',vehiculo_id:'v',tipo_costo:'VARIABLE'}),movement({monto:300,tipo_costo:'FIJO',naturaleza:'GASTO'}),
+  movement({monto:10100,direccion:'ENTRADA',naturaleza:'INGRESO',operacion_auto:'VENTA',vehiculo_id:'v',fecha_operacion:'2026-10-12'}),
+  movement({monto:5000,direccion:'ENTRADA',naturaleza:'APORTE_CAPITAL',monto_confirmado:'NO',incluir_en_saldo:'NO'})];
+ const r=core.reports(d,'2026-10-20'),h=r.dashboard.history.find(x=>x.month==='2026-10');
+ assert.equal(h.business,10100);assert.equal(h.contributions,5000);assert.equal(h.fixedExits,300);assert.equal(h.variableExits,9500);
+ assert.equal(r.dashboard.profit,600);assert.equal(r.dashboard.profitSales,10100);
+});
