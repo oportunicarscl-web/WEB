@@ -105,6 +105,8 @@
    async saveMpToken(t){return call('saveMpToken',t);},
    async syncMercadoPago(fase){return call('syncMercadoPago',{fase});},
    async reloadMovements(){const l=await call('load');return store.replaceMovements(l);},
+   async quickEdit(m,f){const raw=await call('quickEdit',{id:m.id,expectedVersion:m.version,...f});store.patchRaw(m.id,raw);return store.mapped(m.id);},
+   async quickVoid(m){await call('quickVoid',{id:m.id,expectedVersion:m.version});store.patchRaw(m.id,{estado_registro:'ANULADO'});return true;},
    async manualVoid(id){await call('manualVoid',{id});store.patchRaw(id,{estado_registro:'ANULADO'});return true;},
    async quickMatch(q,x){const r=await call('quickMatch',{quickId:q.id,targetId:x.id,expectedVersion:x.version});store.patchRaw(q.id,{estado_registro:'ANULADO'});store.patchRaw(x.id,r.target);return r.target;},
    applyLocal:store.applyLocal

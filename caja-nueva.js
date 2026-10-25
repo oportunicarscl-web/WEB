@@ -144,9 +144,10 @@ function controls(m){
   (miss.length===1&&miss[0]==='Importe'?`<button data-confirm="${m.id}">Importe correcto</button>`:'')+
   (c||m.confirmed?`<button data-unassign="${m.id}" class="cn-undo">Deshacer asignación</button>`:'')+'</div>';
 }
+const canFixQuick=m=>!!(config&&config.isAdmin&&config.quickEdit&&m.source==='ATAJO');
 function gear(m){
- const open=s.gear===m.id;
- return `<div class="cn-gearbox"><button class="cn-gear" data-gear="${m.id}" title="Cambiar ingreso/egreso" aria-label="Cambiar ingreso o egreso">⚙</button>${open?`<span class="cn-flip"><button data-flip="${m.id}" data-v="${ENT}"${m.direction===ENT&&!m.directionInferred?' disabled':''}>Es ingreso</button><button data-flip="${m.id}" data-v="${SAL}"${m.direction===SAL&&!m.directionInferred?' disabled':''}>Es egreso</button></span>`:''}</div>`;
+ const open=s.gear===m.id,fix=canFixQuick(m),quickOpen=isQuickOpen(m);
+ return `<div class="cn-gearbox"><button class="cn-gear" data-gear="${m.id}" title="${fix?'Corregir atajo':'Cambiar ingreso/egreso'}" aria-label="${fix?'Corregir atajo':'Cambiar ingreso o egreso'}">⚙</button>${open?`<span class="cn-flip">${fix?`<button data-qfix="${m.id}">Corregir atajo</button><button data-qvoid="${m.id}">Anular atajo</button>`:''}${quickOpen?'':`<button data-flip="${m.id}" data-v="${ENT}"${m.direction===ENT&&!m.directionInferred?' disabled':''}>Es ingreso</button><button data-flip="${m.id}" data-v="${SAL}"${m.direction===SAL&&!m.directionInferred?' disabled':''}>Es egreso</button>`}</span>`:''}</div>`;
 }
 function rowMarkup(m,bl,tab){
  const tone=m.direction===ENT&&!m.directionInferred?'oc-in':m.direction===SAL&&!m.directionInferred?'oc-out':'oc-unknown',miss=missing(m);
@@ -155,13 +156,15 @@ function rowMarkup(m,bl,tab){
  const right=quick?'':open?controls(m):`<div class="cn-controls"><button data-edit="${m.id}" class="cn-edit">Corregir</button></div>`;
  const run=tab==='movimientos'&&bl?.running[m.id]!==undefined?`<small class="cn-run">Saldo ${money(bl.running[m.id])}</small>`:'';
  const tag=quick?'<span class="oc-chip oc-chip-warn">Registrado · espera el movimiento real</span>':miss.length&&tab==='completar'?miss.map(x=>`<span class="oc-chip oc-chip-bad">Falta ${esc(x.toLowerCase())}</span>`).join(' '):'';
- return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${quick?' cn-gray':''}"><div><small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div><div class="cn-side">${right}${quick?'':gear(m)}</div></article>`;
+ return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${quick?' cn-gray':''}"><div><small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div><div class="cn-side">${right}${quick&&!canFixQuick(m)?'':gear(m)}</div></article>`;
 }
 function draw(el){
  const hist=mode==='hist',infos=accountsInfo(),bal=balances(infos,s.movements,start,mode),all=s.movements.filter(m=>inRange(m,start,mode)&&!isOff(m.accountId));
  const byDate=(a,b)=>(b.date||'').localeCompare(a.date||'');
  const todo=all.filter(m=>!isComplete(m)&&!isQuickOpen(m)).sort(byDate),done=all.filter(isComplete).sort(byDate),quick=all.filter(isQuickOpen).sort(byDate);
- const tabs=s.tab;if(!tabs[mode])tabs[mode]=todo.length?'completar':'movimientos';const tab=tabs[mode];
+ const tabs=s.tab;if(!tabs[mode])tabs[mode]=todo.length?'completar':'movimientos';
+ if(tabs[mode]==='completar'&&!todo.length&&done.length)tabs[mode]='movimientos';
+ const tab=tabs[mode];
  const list=tab==='completar'?todo:tab==='atajos'?quick:done;
  const balOf=m=>bal[m.accountId];
  const needSetup=!hist&&infos.some(a=>a.opening===null);
@@ -206,6 +209,13 @@ function wire(el){
   try{await config.flipDirection(m,b.dataset.v);s.movements=await config.reloadMovements();s.message='Cambiado a '+(b.dataset.v===ENT?'ingreso':'egreso')+'.';}catch(e){s.message=e.message;}
   draw(el);
  });
+ el.querySelectorAll('[data-qfix]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.qfix);s.gear='';if(m)quickDialog(el,m);});
+ el.querySelectorAll('[data-qvoid]').forEach(b=>b.onclick=async()=>{
+  const m=s.movements.find(x=>x.id===b.dataset.qvoid);s.gear='';if(!m||m.saving)return;
+  if(!confirm('¿Anular este atajo? Deja de contar y desaparece de la caja.')){draw(el);return;}
+  try{await config.quickVoid(m);removeMovement(m.id);s.message='Atajo anulado.';}catch(e){s.message=e.message;}
+  draw(el);
+ });
  el.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.dir);run(el,m,async()=>config.setDirection(m,b.dataset.v));});
  el.querySelectorAll('[data-concept]').forEach(b=>b.onchange=()=>{
   if(!b.value)return;const m=s.movements.find(x=>x.id===b.dataset.concept),c=s.concepts.find(x=>x.id===b.value);
@@ -240,6 +250,31 @@ async function autoMatch(el){
    if(t)n++;}catch(e){break;}
  }
  if(n){s.message=n+' gastos registrados por atajo se machearon con su movimiento.';if(el.isConnected)draw(el);}
+}
+// Corregir un atajo mal ingresado (solo administrador): fecha, monto, ingreso/egreso, cuenta, concepto, auto y comentario.
+function quickDialog(el,m){
+ const c=m.classification,acc=accountsInfo(),carOf=id=>{const v=s.inventory.find(x=>String(x.id)===String(id));return v?carLabel(v):'';};
+ const note=String(m.description||'').split(' · ').slice(c&&c.vehicleId?2:1).join(' · ');
+ const d=document.createElement('dialog');d.className='oc-dialog';d.dataset.cnDialog='';
+ d.innerHTML=`<form><h2>Corregir atajo</h2><div class="oc-caja-form">
+  <label>Fecha<input name="date" type="date" required value="${esc(m.date||'')}"></label>
+  <label>Monto<input name="amount" type="number" min="1" step="1" required value="${esc(m.amount??'')}"></label>
+  <label>Ingreso o egreso<select name="direction"><option value="${SAL}"${m.direction===SAL?' selected':''}>Egreso</option><option value="${ENT}"${m.direction===ENT?' selected':''}>Ingreso</option></select></label>
+  <label>Cuenta<select name="accountId">${acc.map(a=>`<option value="${esc(a.id)}"${a.id===m.accountId?' selected':''}>${esc(a.name)}</option>`).join('')}</select></label>
+  <label>Concepto<select name="conceptId"><option value="">Por asignar</option>${s.concepts.filter(x=>!['APORTE_CAPITAL','PRESTAMO','TRANSFERENCIA'].includes(x.nature)).map(x=>`<option value="${esc(x.id)}"${c&&c.id===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
+  <label>Auto (si es de auto)<input name="car" list="cn-cars" placeholder="Patente, marca o modelo" value="${esc(c&&c.vehicleId?carOf(c.vehicleId):'')}"></label>
+  <label>Comentario<input name="note" maxlength="120" value="${esc(note)}"></label>
+ </div><p role="status"></p><button type="submit">Guardar corrección</button> <button type="button" id="cn-cancel">Cancelar</button></form>`;
+ document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();d.querySelector('#cn-cancel').onclick=()=>d.close();
+ d.querySelector('form').onsubmit=async e=>{
+  e.preventDefault();const st=d.querySelector('[role=status]'),f=Object.fromEntries(new FormData(e.target)),btn=d.querySelector('[type=submit]');
+  const carTxt=String(f.car||'').trim(),v=carTxt?carIndex().get(carTxt):null;
+  if(carTxt&&!v){st.textContent='Elige un auto de la lista (patente, marca o modelo).';return;}
+  btn.disabled=true;st.textContent='Guardando…';
+  try{const next=await config.quickEdit(m,{date:f.date,amount:Number(f.amount),direction:f.direction,accountId:f.accountId,conceptId:f.conceptId,vehicleId:v?String(v.id):'',note:f.note});
+   if(next)replace(next);d.close();s.message='Atajo corregido.';draw(el);if(mode==='nueva'){matched=false;autoMatch(el);}}
+  catch(err){st.textContent=err.message;btn.disabled=false;}
+ };
 }
 function setupDialog(el){
  const infos=accountsInfo(),defaults=a=>a.opening!==null?a.opening:/mercado/i.test(a.name)?3402265:/^caja\b/i.test(a.name)?5040000:0;

@@ -23,3 +23,10 @@ test('Manual: valida línea, rechaza fecha futura, monto o descripción vacía',
  assert.throws(()=>ctx.ocManualValidate_({amount:5,direction:'SALIDA',date:'2026-10-20',description:' '},'2026-10-22'));
  assert.equal(ctx.ocIsAdminUser_({name:' Alex '}),true);assert.equal(ctx.ocIsAdminUser_({name:'Gonzalo'}),false);
 });
+test('Corregir/anular atajo: solo administrador y solo filas de atajo',()=>{
+ assert.throws(()=>ctx.ocQuickEdit_({id:'x'},{name:'jt'}),/administrador/);
+ assert.throws(()=>ctx.ocQuickVoid_({id:'x'},{name:'jt'}),/administrador/);
+ ctx.ocMovRow_=()=>({estado_importacion:'MANUAL',version:1});assert.throws(()=>ctx.ocQuickRow_({},{id:'x',expectedVersion:1}),/atajo/);
+ ctx.ocMovRow_=()=>({estado_importacion:'ATAJO',version:2});assert.throws(()=>ctx.ocQuickRow_({},{id:'x',expectedVersion:1}),/cambió/);
+ assert.equal(ctx.ocQuickRow_({},{id:'x',expectedVersion:2}).version,2);
+});

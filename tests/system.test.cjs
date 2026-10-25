@@ -51,3 +51,8 @@ test('Capital de socios: el total declarado incluye los aportes ya pasados a la 
  let c=core.reports(d,'2026-10-25').capital;assert.equal(c.total,133470000);assert.equal(c.inCash,41500000);assert.equal(c.pendingCash,91970000);assert.equal(c.bySocio.Gonzalo,36500000);
  d.contributions=[];c=core.reports(d,'2026-10-25').capital;assert.equal(c.total,41500000);
 });
+
+test('Capital de socios: aporte ingresado a mano sin socio toma el nombre de la descripción',()=>{
+ const d=data();d.movements=[movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:4170000,descripcion:'ALEX'}),movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:5000000,socio:'Alex'})];
+ const c=core.reports(d,'2026-10-25').capital;assert.equal(c.bySocio.Alex,9170000);assert.equal(c.bySocio['Sin socio'],undefined);
+});

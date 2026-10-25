@@ -13,6 +13,8 @@ function ocExtra_(p,actor){
  if(p.action==='flipDirection')return ocFlipDirection_(p,actor);
  if(p.action==='manualAdd')return ocManualAdd_(p,actor);
  if(p.action==='manualVoid')return ocManualVoid_(p,actor);
+ if(p.action==='quickEdit')return ocQuickEdit_(p,actor);
+ if(p.action==='quickVoid')return ocQuickVoid_(p,actor);
  if(p.action==='syncMercadoPago')return osMpSync_(p,actor);
  if(p.action==='saveMpToken')return osMpSaveToken_(p,actor);
  return undefined;
@@ -157,5 +159,28 @@ function ocManualVoid_(p,actor){
  const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),r=ocMovRow_(t,p.id);
  if(r.estado_importacion!=='MANUAL')throw Error('Solo se anulan movimientos ingresados a mano.');
  if(typeof osAudit_==='function')osAudit_(actor,'ANULAR_MANUAL','MOVIMIENTOS_BANCARIOS',p.id,{monto:r.monto,descripcion:r.descripcion});
+ ocPatchRow_(t,r._row,ocBump_(r,actor,{estado_registro:'ANULADO'}));return {id:p.id};
+}
+
+// ---- Corregir o anular un atajo mal ingresado. Solo el administrador (Alex). ----
+function ocQuickRow_(t,p){const r=ocMovRow_(t,p.id);if(r.estado_importacion!=='ATAJO')throw Error('Solo se corrigen movimientos registrados por atajo.');if(Number(r.version||1)!==Number(p.expectedVersion))throw Error('El atajo cambió. Recarga antes de guardar.');return r;}
+function ocQuickEdit_(p,actor){
+ if(!ocIsAdminUser_(actor))throw Error('Solo el administrador puede corregir atajos.');
+ const m='OC_MAESTROS_ID',fin=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),r=ocQuickRow_(fin,p);
+ const q=ocManualValidate_({amount:p.amount,direction:p.direction,date:p.date,description:'atajo'},ocToday_());
+ const accounts=ocTable_(m,'CUENTAS_FINANCIERAS').rows.filter(a=>a.cuenta_id===p.accountId&&ocProd_(a));if(accounts.length!==1)throw Error('Cuenta no encontrada.');const account=accounts[0];
+ let C=null;if(p.conceptId){const cs=ocTable_(m,'CONCEPTOS_CAJA').rows.filter(c=>c.concepto_id===p.conceptId&&c.habilitado==='SI');if(cs.length!==1)throw Error('Concepto no disponible.');C=ocConcept_(cs[0]);ocValidateConcept_(C);
+  if(q.direction==='ENTRADA'&&['GASTO','COSTO'].indexOf(C.nature)>=0||q.direction==='SALIDA'&&C.nature==='INGRESO')throw Error('El concepto no corresponde a si entró o salió dinero.');}
+ let car=null;if(C&&C.vehicleOperation&&p.vehicleId){const vs=ocTable_(m,'VEHICULOS').rows.filter(v=>String(v.vehiculo_id)===String(p.vehicleId)&&ocProd_(v));if(vs.length!==1)throw Error('Auto no encontrado.');car={id:String(vs[0].vehiculo_id),patente:String(vs[0].patente||'')};}
+ const note=String(p.note||'').trim().slice(0,120),cash=ocIsCash_(account),E={id:'',name:'',version:'',category:'',nature:'',cost:'',recurring:false,vehicleOperation:''},K=C||E;
+ const patch=ocBump_(r,actor,{cuenta_id:String(account.cuenta_id),fecha_operacion:q.date,direccion:q.direction,monto:q.amount,descripcion:[C?C.name:'Por asignar',car&&car.patente,note].filter(Boolean).join(' · '),
+  monto_confirmado:cash?'SI':'NO',incluir_en_saldo:cash?'SI':'NO',concepto_id:K.id,concepto_nombre:K.name,concepto_version:K.version,categoria:K.category,naturaleza:K.nature,tipo_costo:K.cost,recurrente:C?(K.recurring?'SI':'NO'):'',operacion_auto:K.vehicleOperation,vehiculo_id:car?car.id:'',estado_clasificacion:!C?'PENDIENTE':K.vehicleOperation&&!car?'POR_ASIGNAR_AUTO':'CLASIFICADO'});
+ if(typeof osAudit_==='function')osAudit_(actor,'CORREGIR_ATAJO','MOVIMIENTOS_BANCARIOS',p.id,{antes:ocSlimMov_(r),despues:patch});
+ ocPatchRow_(fin,r._row,patch);return ocSlimMov_(Object.assign({},r,patch));
+}
+function ocQuickVoid_(p,actor){
+ if(!ocIsAdminUser_(actor))throw Error('Solo el administrador puede anular atajos.');
+ const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),r=ocQuickRow_(t,p);
+ if(typeof osAudit_==='function')osAudit_(actor,'ANULAR_ATAJO','MOVIMIENTOS_BANCARIOS',p.id,{monto:r.monto,descripcion:r.descripcion});
  ocPatchRow_(t,r._row,ocBump_(r,actor,{estado_registro:'ANULADO'}));return {id:p.id};
 }
