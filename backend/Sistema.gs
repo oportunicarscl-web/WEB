@@ -33,7 +33,7 @@ function osLoad_(actor){
  const maestros='OC_MAESTROS_ID',prod=(book,name)=>ocTable_(book,name).rows.filter(ocProd_);
  return {
   profile:actor,
-  inventory:prod(maestros,'VEHICULOS').map(osClean_),operations:osRows_('AUTOS_OPERACION'),activities:osRows_('ACTIVIDADES_AUTOS'),forecasts:osRows_('PROYECCIONES'),loans:osRows_('PRESTAMOS'),accounts:prod(maestros,'CUENTAS_FINANCIERAS').map(osClean_),
+  inventory:prod(maestros,'VEHICULOS').map(osClean_),operations:osRows_('AUTOS_OPERACION'),contributions:osContributions_(),activities:osRows_('ACTIVIDADES_AUTOS'),forecasts:osRows_('PROYECCIONES'),loans:osRows_('PRESTAMOS'),accounts:prod(maestros,'CUENTAS_FINANCIERAS').map(osClean_),
   concepts:ocTable_(maestros,'CONCEPTOS_CAJA').rows.filter(r=>r.habilitado==='SI').map(ocConcept_),
   movements:prod('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS').map(r=>osSlim_(r,OC_MOV_FIELDS)),
   companyStart:PropertiesService.getScriptProperties().getProperty('OC_FECHA_CREACION')||'',
@@ -41,6 +41,8 @@ function osLoad_(actor){
   today:Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd')
  };
 }
+// Aportes de capital y trabajo de los socios (hoja APORTES_CAPITAL_SOCIOS). Si la hoja aún no existe, se devuelve vacío.
+function osContributions_(){try{return osRows_('APORTES_CAPITAL_SOCIOS');}catch(e){return [];}}
 // Tras sincronizar Claxo solo cambia el inventario: se pide únicamente esa hoja.
 function osInventory_(){return {inventory:ocTable_('OC_MAESTROS_ID','VEHICULOS').rows.filter(ocProd_).map(osClean_),sync:PropertiesService.getScriptProperties().getProperty('OC_CLAXO_LAST_SYNC')||null};}
 function osEnsure_(book,name,headers){
@@ -69,7 +71,7 @@ function osAudit_(actor,action,table,id,detail){
  ocPatchRow_(t,t.sheet.getLastRow()+1,{evento_id:Utilities.getUuid(),fecha:new Date().toISOString(),actor_id:actor.id,accion:action,tabla:table,registro_id:id,detalle:JSON.stringify(detail).slice(0,15000),ambiente:'PRODUCCION',estado_registro:'ACTIVO'});
 }
 function osSave_(p,actor){
- const table=p.table,allowed=['VEHICULOS','AUTOS_OPERACION','ACTIVIDADES_AUTOS','COSTOS_FIJOS','PROYECCIONES','PRESTAMOS'];
+ const table=p.table,allowed=['VEHICULOS','AUTOS_OPERACION','ACTIVIDADES_AUTOS','COSTOS_FIJOS','PROYECCIONES','PRESTAMOS','APORTES_CAPITAL_SOCIOS'];
  if(allowed.indexOf(table)<0)throw Error('Registro no permitido.');
  if(['VEHICULOS','AUTOS_OPERACION','ACTIVIDADES_AUTOS','PROYECCIONES','PRESTAMOS'].indexOf(table)<0&&!osFinance_(actor))throw Error('Se requiere acceso financiero.');
  const def=OC_SYSTEM_TABLES[table],input=p.record||{},patch={};
@@ -77,9 +79,10 @@ function osSave_(p,actor){
  const id=patch[def.key]||p.requestId;if(typeof id!=='string'||!/^[\w-]{1,100}$/.test(id))throw Error('Identificador inválido.');patch[def.key]=id;
  ['fecha','fecha_ingreso','fecha_venta','fecha_saldo','fecha_vencimiento'].forEach(k=>{if(patch[k]&&!osDate_(patch[k]))throw Error('Fecha inválida: '+k);});
  ['costo_compra','precio_venta','comision_consignacion','costo','dias','monto_mensual','monto','saldo_inicial','dia_pago'].forEach(k=>{if(patch[k]!==undefined&&patch[k]!==''){const v=Number(patch[k]);if(!Number.isSafeInteger(v)||v<0)throw Error('Importe o cantidad inválida: '+k);patch[k]=v;}});
- const enums={modalidad:['PROPIO','CONSIGNADO'],estado_auto:['PREPARACION','DISPONIBLE','RESERVADO','VENDIDO','RETIRADO'],tipo:table==='ACTIVIDADES_AUTOS'?['ESTACIONAMIENTO','ARREGLO','LIMPIEZA','FOTOS','OTRO']:['CUOTA_VENTA','INGRESO_ESPERADO','DEUDA','CONSIGNACION','GASTO_PREVISTO','SERVICIO_30_DIAS'],direccion:['ENTRADA','SALIDA'],sentido:['RECIBIDO','OTORGADO'],habilitado:['SI','NO'],estado:['PENDIENTE','EN_CURSO','HECHO']};
+ const enums={modalidad:['PROPIO','CONSIGNADO'],estado_auto:['PREPARACION','DISPONIBLE','RESERVADO','VENDIDO','RETIRADO'],tipo:table==='ACTIVIDADES_AUTOS'?['ESTACIONAMIENTO','ARREGLO','LIMPIEZA','FOTOS','OTRO']:['CUOTA_VENTA','INGRESO_ESPERADO','DEUDA','CONSIGNACION','GASTO_PREVISTO','SERVICIO_30_DIAS'],direccion:['ENTRADA','SALIDA'],sentido:['RECIBIDO','OTORGADO'],habilitado:['SI','NO'],estado:table==='APORTES_CAPITAL_SOCIOS'?['REGISTRADO','ANULADO']:['PENDIENTE','EN_CURSO','HECHO'],moneda:['CLP']};
  Object.keys(enums).forEach(k=>{if(patch[k]!==undefined&&patch[k]!==''&&enums[k].indexOf(patch[k])<0)throw Error('Opción inválida: '+k);});
- const required={VEHICULOS:['patente','marca','modelo'],AUTOS_OPERACION:['modalidad','fecha_ingreso','estado_auto'],ACTIVIDADES_AUTOS:['vehiculo_id','fecha','tipo','estado'],COSTOS_FIJOS:['nombre','monto_mensual','dia_pago','habilitado'],PROYECCIONES:['fecha','direccion','tipo','descripcion','monto'],PRESTAMOS:['nombre','sentido','saldo_inicial','fecha_saldo']}[table];
+ const required={VEHICULOS:['patente','marca','modelo'],AUTOS_OPERACION:['modalidad','fecha_ingreso','estado_auto'],ACTIVIDADES_AUTOS:['vehiculo_id','fecha','tipo','estado'],COSTOS_FIJOS:['nombre','monto_mensual','dia_pago','habilitado'],PROYECCIONES:['fecha','direccion','tipo','descripcion','monto'],PRESTAMOS:['nombre','sentido','saldo_inicial','fecha_saldo'],APORTES_CAPITAL_SOCIOS:['socio','fecha','monto']}[table];
+ if(table==='APORTES_CAPITAL_SOCIOS'){patch.moneda=patch.moneda||'CLP';patch.estado=patch.estado||'REGISTRADO';}
  required.forEach(k=>{if(patch[k]==='')throw Error('Completa '+k);});
  if(patch.dia_pago!==undefined&&(patch.dia_pago<1||patch.dia_pago>28))throw Error('Día de pago entre 1 y 28.');
  if(table!=='VEHICULOS'&&patch.vehiculo_id&&ocInventory_().filter(v=>v.id===String(patch.vehiculo_id)).length!==1)throw Error('Auto no encontrado.');

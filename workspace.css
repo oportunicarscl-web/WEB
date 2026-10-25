@@ -198,3 +198,12 @@ body.workspace-open{
 #oc-workspace .cn-card.cn-sel{border-color:#1f1710;box-shadow:0 0 0 1px #1f1710 inset}
 #oc-workspace .cn-card.cn-off{opacity:.45}
 #oc-workspace .cn-card[data-acc]:focus-visible{outline:2px solid #b4935f;outline-offset:2px}
+/* Resumen: flujo de caja a todo el ancho y capital de los socios */
+#oc-workspace .oc-dashboard-grid .os-wide{grid-column:1/-1}
+#oc-workspace .os-capital{margin-bottom:22px}#oc-workspace .os-cap-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}#oc-workspace .os-cap-head h2{font-size:22px;margin:4px 0}
+#oc-workspace .os-cap-chart{margin:18px 0 8px}#oc-workspace .os-cap-row{display:grid;grid-template-columns:minmax(150px,1fr) 3fr minmax(150px,auto);gap:14px;align-items:center;margin:14px 0}
+#oc-workspace .os-cap-row span small,#oc-workspace .os-cap-row b small{display:block;font-size:11px;font-weight:400;color:#82735d}#oc-workspace .os-cap-row b{text-align:right}#oc-workspace .os-cap-row b small.oc-bad{color:#a23e38}
+#oc-workspace .os-cap-track{position:relative;height:26px;background:#f3eee5}#oc-workspace .os-cap-track i{position:absolute;top:0;bottom:0;left:0}#oc-workspace .os-cap-track em{position:absolute;top:-5px;bottom:-5px;border-left:2px dashed #3b3227}
+.os-cap-in{background:#947243}.os-cap-ok{background:#36765a}.os-cap-gap{background:repeating-linear-gradient(135deg,#a23e38 0 6px,#d9a39e 6px 11px)}.os-cap-extra{background:#7fb69a}
+#oc-workspace .os-cap-legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px}#oc-workspace .os-cap-legend i{display:inline-block;width:12px;height:12px;margin-right:5px;vertical-align:-1px}
+@media(max-width:700px){#oc-workspace .os-cap-row{grid-template-columns:1fr}#oc-workspace .os-cap-row b{text-align:left}#oc-workspace .os-cap-head{flex-direction:column}}

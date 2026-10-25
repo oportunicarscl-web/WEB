@@ -2,8 +2,8 @@
 // Una sola consulta ('load') al iniciar. Después todo se lee de memoria; al guardar solo se envía y se recibe el registro cambiado.
 (function(root){
  'use strict';
- const TABLE_LIST={VEHICULOS:'inventory',AUTOS_OPERACION:'operations',ACTIVIDADES_AUTOS:'activities',PROYECCIONES:'forecasts',PRESTAMOS:'loans'};
- const TABLE_KEY={VEHICULOS:'vehiculo_id',AUTOS_OPERACION:'vehiculo_id',ACTIVIDADES_AUTOS:'actividad_id',PROYECCIONES:'proyeccion_id',PRESTAMOS:'prestamo_id'};
+ const TABLE_LIST={VEHICULOS:'inventory',AUTOS_OPERACION:'operations',ACTIVIDADES_AUTOS:'activities',PROYECCIONES:'forecasts',PRESTAMOS:'loans',APORTES_CAPITAL_SOCIOS:'contributions'};
+ const TABLE_KEY={VEHICULOS:'vehiculo_id',AUTOS_OPERACION:'vehiculo_id',ACTIVIDADES_AUTOS:'actividad_id',PROYECCIONES:'proyeccion_id',PRESTAMOS:'prestamo_id',APORTES_CAPITAL_SOCIOS:'aporte_id'};
  const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santiago'}).format(new Date());
  const inventoryItem=v=>({id:v.vehiculo_id,patente:v.patente,modelo:[v.marca,v.modelo,v.version_vehiculo].filter(Boolean).join(' ')});
 
@@ -34,7 +34,7 @@
  }
 
  function createStore(call,loaded){
-  const D={strictFrom:CASH_START,inventory:loaded.inventory,operations:latestPerCar(loaded.operations||[]),activities:loaded.activities,movements:loaded.movements.filter(effective),hidden:loaded.movements.filter(r=>!effective(r)).length,accounts:loaded.accounts,forecasts:loaded.forecasts,loans:loaded.loans,companyStart:loaded.companyStart||'',sync:loaded.sync||null,canFinance:true};
+  const D={strictFrom:CASH_START,inventory:loaded.inventory,operations:latestPerCar(loaded.operations||[]),activities:loaded.activities,movements:loaded.movements.filter(effective),hidden:loaded.movements.filter(r=>!effective(r)).length,accounts:loaded.accounts,forecasts:loaded.forecasts,loans:loaded.loans,contributions:loaded.contributions||[],companyStart:loaded.companyStart||'',sync:loaded.sync||null,canFinance:true};
   let cache=null;const invalidate=()=>{cache=null;};
   const accountNames=()=>Object.fromEntries(D.accounts.map(a=>[a.cuenta_id,a.nombre]));
   function state(){

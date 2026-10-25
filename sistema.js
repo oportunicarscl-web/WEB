@@ -11,6 +11,7 @@ const defs={
  VEHICULOS:{title:'Registrar auto',key:'vehiculo_id',data:'inventory',fields:[['patente','Patente','text'],['marca','Marca','text'],['modelo','Modelo','text'],['anio','Año','number']]},
  AUTOS_OPERACION:{title:'Ficha del auto',key:'vehiculo_id',data:'operations',fields:[['vehiculo_id','Auto','auto'],['modalidad','Modalidad',['PROPIO','CONSIGNADO']],['fecha_ingreso','Ingreso','date'],['estado_auto','Estado',['PREPARACION','DISPONIBLE','RESERVADO','VENDIDO','RETIRADO']],['notas','Notas','text']]},
  PROYECCIONES:{title:'Compromiso de cobro o pago',key:'proyeccion_id',data:'forecasts',fields:[['fecha','Fecha esperada','date'],['direccion','Dirección',['ENTRADA','SALIDA']],['tipo','Tipo',['CUOTA_VENTA','INGRESO_ESPERADO','DEUDA','CONSIGNACION','GASTO_PREVISTO','SERVICIO_30_DIAS']],['descripcion','Descripción','text'],['vehiculo_id','Auto, si corresponde','auto-optional'],['monto','Monto','number']]},
+ APORTES_CAPITAL_SOCIOS:{title:'Aporte de socio (capital o trabajo)',key:'aporte_id',data:'contributions',fields:[['socio','Socio o descripción','text'],['fecha','Fecha','date'],['monto','Monto','number']]},
  PRESTAMOS:{title:'Préstamo',key:'prestamo_id',data:'loans',fields:[['nombre','Nombre / contraparte','text'],['sentido','Tipo',['RECIBIDO','OTORGADO']],['saldo_inicial','Principal pendiente al cierre de la fecha','number'],['fecha_saldo','Fecha del saldo','date'],['fecha_vencimiento','Vencimiento','date']]}
 };
 function setup(o={}){options=o;message='';}
@@ -74,13 +75,15 @@ function bars(label,items,moneyValues=false,extra=''){
  const max=Math.max(1,...items.map(x=>Math.abs(x[1]||0)));
  return '<section class="oc-card oc-chart"><h2>'+esc(label)+'</h2>'+(!items.length?'<p>Sin registros todavía.</p>':items.map(([name,value])=>'<div class="oc-bar-row"><span>'+esc(name)+'</span><div class="oc-bar-track"><i style="width:'+(value===null?0:Math.abs(value)/max*100)+'%;background:'+(value<0?'#a23e38':'#947243')+'"></i></div><b>'+(value===null?'Sin datos':moneyValues?money(value):esc(value))+'</b></div>').join(''))+extra+'</section>';
 }
-function trend(label,rows,series){
+function trend(label,rows,series,wide){
  const vals=rows.flatMap(r=>series.map(s=>r[s[0]])).filter(Number.isFinite),low=Math.min(0,...vals),high=Math.max(1,...vals),range=high-low||1;
- const x=i=>40+i*680/Math.max(1,rows.length-1),y=v=>190-(v-low)/range*160;
- let svg='<svg viewBox="0 0 760 235" role="img" aria-label="'+esc(label)+'"><line x1="40" y1="190" x2="720" y2="190" stroke="#c9bdac"/>';
+ const W=wide?1200:760,H=wide?340:235,base=H-45,top=wide?20:30;
+ const x=i=>(wide?70:40)+i*(W-(wide?110:80))/Math.max(1,rows.length-1),y=v=>base-(v-low)/range*(base-top);
+ let svg='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(label)+'"><line x1="'+(wide?70:40)+'" y1="'+base+'" x2="'+(W-40)+'" y2="'+base+'" stroke="#c9bdac"/>';
+ if(wide)[0.25,0.5,0.75,1].forEach(f=>{const v=low+range*f;svg+='<line x1="70" y1="'+y(v)+'" x2="'+(W-40)+'" y2="'+y(v)+'" stroke="#eee7db"/><text x="62" y="'+(y(v)+4)+'" text-anchor="end" font-size="12" fill="#82735d">'+esc(money(v))+'</text>';});
  series.forEach(([key,name,color])=>{let part=[];const flush=()=>{if(part.length)svg+='<polyline fill="none" stroke="'+color+'" stroke-width="3" points="'+part.join(' ')+'"/>';part=[];};rows.forEach((r,i)=>{if(!Number.isFinite(r[key])){flush();return;}part.push(x(i)+','+y(r[key]));svg+='<circle cx="'+x(i)+'" cy="'+y(r[key])+'" r="4" fill="'+color+'"><title>'+esc(r.month+' · '+name+': '+money(r[key]))+'</title></circle>';});flush();});
- [0,rows.length-1].filter((v,i,a)=>a.indexOf(v)===i&&v>=0).forEach(i=>svg+='<text x="'+x(i)+'" y="220" text-anchor="middle" font-size="12">'+esc(rows[i].month)+'</text>');svg+='</svg>';
- return '<section class="oc-card oc-chart"><h2>'+esc(label)+'</h2>'+svg+'<p>'+series.map(s=>'<span style="color:'+s[2]+'">● '+esc(s[1])+'</span>').join(' · ')+'</p>'+(!vals.length?'<p>Sin saldos confirmados para este período.</p>':'')+'<details><summary>Ver valores por mes</summary>'+table(['Mes',...series.map(s=>s[1])],rows.map(r=>[esc(r.month),...series.map(s=>money(r[s[0]]))]))+'</details></section>';
+ (wide?rows.map((r,i)=>i):[0,rows.length-1]).filter((v,i,a)=>a.indexOf(v)===i&&v>=0).forEach(i=>svg+='<text x="'+x(i)+'" y="'+(base+25)+'" text-anchor="middle" font-size="12">'+esc(rows[i].month)+'</text>');svg+='</svg>';
+ return '<section class="oc-card oc-chart'+(wide?' os-wide':'')+'"><h2>'+esc(label)+'</h2>'+svg+'<p>'+series.map(s=>'<span style="color:'+s[2]+'">● '+esc(s[1])+'</span>').join(' · ')+'</p>'+(!vals.length?'<p>Sin saldos confirmados para este período.</p>':'')+'<details><summary>Ver valores por mes</summary>'+table(['Mes',...series.map(s=>s[1])],rows.map(r=>[esc(r.month),...series.map(s=>money(r[s[0]]))]))+'</details></section>';
 }
 function salesChart(rows){const max=Math.max(1,...rows.map(r=>r.sales));return '<section class="oc-card oc-chart"><h2>Ventas mensuales</h2><div class="oc-sales-chart">'+rows.map(r=>'<div><b>'+r.sales+'</b><i style="height:'+r.sales/max*120+'px"></i><small>'+esc(r.month.slice(2))+'</small></div>').join('')+'</div><p>Ventas registradas por mes</p></section>';}
 // Costos asignados a un auto, sumados por concepto (lavados, combustible, fotografías, publicaciones…).
@@ -95,13 +98,33 @@ function cashTotal(){
  return known.length?known.reduce((t,a)=>t+a.value,0):null;
 }
 const stockAtCost=cars=>cars.filter(c=>c.modality==='PROPIO'&&!c.sold&&c.status!=='RETIRADO').reduce((t,c)=>t+(c.purchase||0)+(c.preparation||0),0);
+// ¿Si cerramos hoy y vendemos todo, recuperamos lo que pusieron los socios?
+// Lo recuperable = caja + stock propio (al costo o a precio publicado) + por cobrar + préstamos otorgados − deudas.
+function capitalCard(r,cars,cash,stock){
+ const cap=r.capital||{total:0,rows:[],count:0},stockCars=cars.filter(c=>c.modality==='PROPIO'&&!c.sold&&c.status!=='RETIRADO');
+ const listed=stockCars.reduce((t,c)=>t+(Number.isFinite(c.listPrice)&&c.listPrice>0?c.listPrice:(c.purchase||0)+(c.preparation||0)),0);
+ const rest=(r.receivable||0)+(r.loanAsset||0)-(r.debt||0),atCost=(cash||0)+stock+rest,atList=(cash||0)+listed+rest;
+ const add='<button data-system-new="APORTES_CAPITAL_SOCIOS">Registrar aporte</button>';
+ if(!cap.total)return '<section class="oc-card os-capital"><h2>Capital de los socios</h2><p>Todavía no hay aportes registrados. Registra el capital y el trabajo aportado para ver cuánto se recuperaría si hoy se cierra y se vende todo.</p>'+add+'</section>';
+ const max=Math.max(cap.total,atList,atCost,1),w=v=>Math.max(0,Math.min(100,v/max*100)),line=w(cap.total);
+ const row=(label,value,note)=>{const ok=Math.min(Math.max(value,0),cap.total),gap=cap.total-ok,extra=Math.max(0,value-cap.total);
+  return '<div class="os-cap-row"><span>'+esc(label)+'<small>'+esc(note)+'</small></span><div class="os-cap-track"><i class="os-cap-ok" style="width:'+w(ok)+'%"></i><i class="os-cap-gap" style="left:'+w(ok)+'%;width:'+w(gap)+'%"></i>'+(extra?'<i class="os-cap-extra" style="left:'+w(cap.total)+'%;width:'+w(extra)+'%"></i>':'')+'<em style="left:'+line+'%"></em></div><b>'+money(value)+'<small class="'+(gap?'oc-bad':'oc-ok')+'">'+(gap?'Faltan '+money(gap):'Se recupera todo')+'</small></b></div>';};
+ const pctCost=Math.round(Math.max(0,atCost)/cap.total*100),gapCost=Math.max(0,cap.total-atCost);
+ return '<section class="oc-card os-capital"><div class="os-cap-head"><div><p class="oc-eyebrow">CAPITAL DE LOS SOCIOS</p><h2>Si hoy cerramos y vendemos todo, se recupera '+money(Math.max(0,atCost))+' de '+money(cap.total)+' ('+pctCost+' %)</h2>'+(gapCost?'<p class="oc-bad"><b>Faltan '+money(gapCost)+'</b> para devolver lo aportado.</p>':'<p class="oc-ok"><b>Alcanza para devolver todo lo aportado.</b></p>')+'</div>'+add+'</div>'+
+  '<div class="os-cap-chart"><div class="os-cap-row"><span>Aportado por los socios<small>capital y trabajo</small></span><div class="os-cap-track"><i class="os-cap-in" style="width:'+line+'%"></i><em style="left:'+line+'%"></em></div><b>'+money(cap.total)+'</b></div>'+
+  row('Cerrando hoy · stock al costo',atCost,'caja + autos a lo que costaron')+row('Cerrando hoy · stock a precio publicado',atList,'caja + autos vendidos al precio de Claxo')+'</div>'+
+  '<p class="os-cap-legend"><span><i class="os-cap-in"></i>Aportado</span><span><i class="os-cap-ok"></i>Se recupera</span><span><i class="os-cap-gap"></i>No se recupera</span><span><i class="os-cap-extra"></i>Sobra</span></p>'+
+  '<details><summary>Ver cómo se calcula</summary>'+table(['Concepto','Al costo','A precio publicado'],[['Caja y bancos',money(cash),money(cash)],['Stock propio ('+stockCars.length+' autos)',money(stock),money(listed)],['Por cobrar',money(r.receivable||0),money(r.receivable||0)],['Préstamos otorgados',money(r.loanAsset||0),money(r.loanAsset||0)],['Deudas',money(-(r.debt||0)),money(-(r.debt||0))],['<b>Se recupera</b>','<b>'+money(atCost)+'</b>','<b>'+money(atList)+'</b>'],['<b>Aportado por los socios</b>','<b>'+money(cap.total)+'</b>','<b>'+money(cap.total)+'</b>']])+
+  '<p><small>Aportes: '+cap.rows.map(x=>esc(x.socio)+' '+money(x.monto)+' ('+esc(fmtDay(x.fecha))+')').join(' · ')+(cap.fromCash?' · aportes en caja '+money(cap.fromCash):'')+'.</small></p></details></section>';
+}
 function management(r,cars){
  const a=r.dashboard||{},h=a.history||[],cash=cashTotal(),stock=stockAtCost(cars);
  const patrimony=cash===null?null:cash+stock+(r.receivable||0)+(r.loanAsset||0)-(r.debt||0);
- const metrics=[['Ventas del mes',r.salesMonth??0],['Ingresos por ventas',money(a.revenue)],['Margen promedio',Number.isFinite(a.margin)?a.margin.toFixed(1)+' %':'Sin datos'],['Autos en stock',a.stockCount??cars.filter(c=>!c.sold).length],['Cuentas por cobrar',money(r.receivable)],['Cuentas por pagar',money(r.debt)]];
+ const salesNow=((h[h.length-1]||{}).month===String(r.today||today()).slice(0,7)?h[h.length-1].sales:0);
+ const metrics=[['Ventas del mes',salesNow],['Ingresos por ventas',money(a.revenue)],['Margen promedio',Number.isFinite(a.margin)?a.margin.toFixed(1)+' %':'Sin datos'],['Autos en stock',a.stockCount??cars.filter(c=>!c.sold).length],['Cuentas por cobrar',money(r.receivable)],['Cuentas por pagar',money(r.debt)]];
  return '<section class="oc-metrics oc-six">'+metrics.map(([k,v])=>'<article><p>'+k+'</p><strong>'+v+'</strong></article>').join('')+'</section><p>Historia desde '+esc(a.start||'el primer registro')+(a.companyStartKnown?'':' · primer dato disponible; fecha de creación por definir')+'. Los importes sin confirmar no se presentan como saldos reales.</p>'+
- '<div class="oc-dashboard-grid">'+salesChart(h)+bars('Estado de inventario',Object.entries(a.states||{}))+bars('Rentabilidad · últimos 4 vendidos',(a.lastSold||[]).map(c=>[c.label,c.result]),true)+trend('Flujo de caja mensual',h,[['entries','Ingresos','#36765a'],['exits','Egresos','#a23e38']])+bars('Composición de gastos',Object.entries(a.expenses||{}),true)+carExpensesCard(a.carExpenses||[])+bars('Patrimonio actual',[['Caja',cash],['Stock propio al costo',stock],['Por cobrar',r.receivable],['Préstamos otorgados',r.loanAsset],['Obligaciones',r.debt===null?null:-r.debt],['Patrimonio',patrimony]],true)+'</div>'+
- trend('Saldos bancarios históricos',h,[['balance','Saldo consolidado','#947243']])+
+ capitalCard(r,cars,cash,stock)+'<div class="oc-dashboard-grid">'+salesChart(h)+bars('Estado de inventario',Object.entries(a.states||{}))+bars('Rentabilidad · últimos 4 vendidos',(a.lastSold||[]).map(c=>[c.label,c.result]),true)+bars('Composición de gastos',Object.entries(a.expenses||{}),true)+carExpensesCard(a.carExpenses||[])+bars('Patrimonio actual',[['Caja',cash],['Stock propio al costo',stock],['Por cobrar',r.receivable],['Préstamos otorgados',r.loanAsset],['Obligaciones',r.debt===null?null:r.debt?-r.debt:0],['Patrimonio',patrimony]],true)+trend('Flujo de caja mensual',h,[['entries','Ingresos','#36765a'],['exits','Egresos','#a23e38']],true)+'</div>'+
+ trend('Saldos bancarios históricos',h,[['balance','Saldo consolidado','#947243']],true)+
  '<section class="oc-card"><h2>Resultado por auto</h2>'+table(['Auto','Estado','Días','Compra','Preparación','Venta','Resultado'],cars.map(c=>[esc(car(c.id)),esc(title(c.status)),esc(c.days??'—'),money(c.purchase),money(c.preparation),money(c.sale),money(c.result)]))+'</section>';
 }
 
