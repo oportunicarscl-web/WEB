@@ -45,20 +45,17 @@ test('Día de venta = último cobro de venta en caja; ingreso inferido de la pri
 });
 test('Ids numéricos en caja se unen al inventario de texto y una venta cobrada marca vendido',()=>{const d=data();d.operations=[];d.inventory=[{vehiculo_id:'100',patente:'ARGO'}];d.movements=[movement({vehiculo_id:100,operacion_auto:'VENTA',direccion:'ENTRADA',naturaleza:'INGRESO',monto:4250000,monto_confirmado:'NO',fecha_operacion:'2026-09-30'}),movement({vehiculo_id:100,operacion_auto:'ARREGLO',monto:1000,monto_confirmado:'NO'})];const c=core.reports(d,'2026-10-18').cars[0];assert.equal(c.income,4250000);assert.equal(c.preparation,1000);assert.equal(c.sold,true);assert.equal(c.status,'VENDIDO');assert.equal(c.saleDate,'2026-09-30');});
 
-test('Capital de socios: el total declarado incluye los aportes ya pasados a la caja (no se suman dos veces)',()=>{
- const d=data();d.contributions=[{aporte_id:'t',socio:'Socios',fecha:'2026-10-25',monto:133470000,estado:'REGISTRADO'}];
- d.movements=[movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:36500000,socio:'Gonzalo',monto_confirmado:'NO',incluir_en_saldo:'NO'}),movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:5000000,socio:'Alex'})];
- let c=core.reports(d,'2026-10-25').capital;assert.equal(c.total,133470000);assert.equal(c.inCash,41500000);assert.equal(c.pendingCash,91970000);assert.equal(c.bySocio.Gonzalo,36500000);
- d.contributions=[];c=core.reports(d,'2026-10-25').capital;assert.equal(c.total,41500000);
-});
+
 
 test('Capital de socios: aporte ingresado a mano sin socio toma el nombre de la descripción',()=>{
  const d=data();d.movements=[movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:4170000,descripcion:'ALEX'}),movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:5000000,socio:'Alex'})];
  const c=core.reports(d,'2026-10-25').capital;assert.equal(c.bySocio.Alex,9170000);assert.equal(c.bySocio['Sin socio'],undefined);
 });
 
-test('Capital de socios: las fichas de aporte ligadas a un movimiento no cuentan como total declarado',()=>{
- const d=data();d.contributions=[{aporte_id:'APORTE-MP-1',socio:'Gonzalo',movimiento_id:'MP-1',monto:18750000,estado:'POR_REVISAR'},{aporte_id:'t',socio:'Socios',monto:133470000,estado:'REGISTRADO'}];
- d.movements=[movement({movimiento_id:'MP-1',naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:18750000,socio:'Gonzalo'})];
- const c=core.reports(d,'2026-10-25').capital;assert.equal(c.declared,133470000);assert.equal(c.inCash,18750000);assert.equal(c.total,133470000);
+
+
+test('Capital de socios: sin datos en duro, es lo registrado en la caja con concepto de aporte',()=>{
+ const d=data();d.contributions=[{aporte_id:'t',socio:'Socios',monto:133470000,estado:'REGISTRADO'}];
+ d.movements=[movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:36500000,socio:'Gonzalo',monto_confirmado:'NO',incluir_en_saldo:'NO'}),movement({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:5000000,socio:'Alex'})];
+ const c=core.reports(d,'2026-10-25').capital;assert.equal(c.total,41500000);assert.equal(c.bySocio.Gonzalo,36500000);
 });

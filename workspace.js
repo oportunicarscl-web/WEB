@@ -55,7 +55,7 @@
     render();
   }
   // Por ahora solo Caja y bancos y Autos y operación están activas; el resto se ve en el menú pero no carga ni cambia la vista.
-  const active=['finanzas','historica','operaciones','gerencial','operacional','analitica','administrar'];
+  const active=['finanzas','historica','operaciones','gerencial','operacional','analitica','administrar','gestion','compromisos','parametros'];
   function navigate(next) {
     if(!active.includes(next))return;
     if(next==='administrar'){if(!admin)return;}

@@ -207,3 +207,5 @@ body.workspace-open{
 .os-cap-in{background:#947243}.os-cap-ok{background:#36765a}.os-cap-gap{background:repeating-linear-gradient(135deg,#a23e38 0 6px,#d9a39e 6px 11px)}.os-cap-extra{background:#7fb69a}
 #oc-workspace .os-cap-legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px}#oc-workspace .os-cap-legend i{display:inline-block;width:12px;height:12px;margin-right:5px;vertical-align:-1px}
 @media(max-width:700px){#oc-workspace .os-cap-row{grid-template-columns:1fr}#oc-workspace .os-cap-row b{text-align:left}#oc-workspace .os-cap-head{flex-direction:column}}
+/* Autos y operación: el encabezado de la tabla queda fijo y solo se deslizan los autos */
+#oc-workspace #os-cars thead th{position:sticky;top:0;z-index:2;box-shadow:0 1px 0 #d9c8ac}

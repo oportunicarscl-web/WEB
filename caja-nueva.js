@@ -124,6 +124,8 @@ function accountBalances(){
   return {id:a.id,name:a.name,opening:a.opening,cut:a.cut||start,value,pending:b.pending||{count:0,sum:0}};
  });
 }
+// Cuentas que nacen con la caja cuadrada: no se muestran en Caja histórica.
+const HIST_HIDDEN=/^(security empresa|banco (de )?chile)$/i;
 const isOff=id=>!!(s&&s.off&&s.off.has(String(id)));
 const cardAttr=a=>`class="cn-card ${isOff(a.id)?'cn-off':'cn-sel'}" data-acc="${esc(a.id)}" role="button" tabindex="0" aria-pressed="${isOff(a.id)?'false':'true'}" title="Filtrar por ${esc(a.name)}"`;
 function accountCard(a,bl){
@@ -159,7 +161,7 @@ function rowMarkup(m,bl,tab){
  return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${quick?' cn-gray':''}"><div><small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div><div class="cn-side">${right}${quick&&!canFixQuick(m)?'':gear(m)}</div></article>`;
 }
 function draw(el){
- const hist=mode==='hist',infos=accountsInfo(),bal=balances(infos,s.movements,start,mode),all=s.movements.filter(m=>inRange(m,start,mode)&&!isOff(m.accountId));
+ const hist=mode==='hist',infos=accountsInfo().filter(a=>!hist||!HIST_HIDDEN.test(a.name)),bal=balances(infos,s.movements,start,mode),all=s.movements.filter(m=>inRange(m,start,mode)&&!isOff(m.accountId));
  const byDate=(a,b)=>(b.date||'').localeCompare(a.date||'');
  const todo=all.filter(m=>!isComplete(m)&&!isQuickOpen(m)).sort(byDate),done=all.filter(isComplete).sort(byDate),quick=all.filter(isQuickOpen).sort(byDate);
  const tabs=s.tab;if(!tabs[mode])tabs[mode]=todo.length?'completar':'movimientos';

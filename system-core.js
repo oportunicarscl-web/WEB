@@ -59,14 +59,11 @@ function reports(d,today){
  const stock=cars.some(c=>!c.sold&&c.status!=='RETIRADO'&&(c.modality==='POR_DEFINIR'||c.modality==='PROPIO'&&c.cost===null))?null:cars.filter(c=>!c.sold&&c.status!=='RETIRADO'&&c.modality==='PROPIO').reduce((s,c)=>s+(c.cost||0),0);
  const loanDebt=loans.filter(l=>l.sentido==='RECIBIDO').reduce((s,l)=>s+(l.balance||0),0),loanAsset=loans.filter(l=>l.sentido==='OTORGADO').reduce((s,l)=>s+(l.balance||0),0);
  const fixed=fixedFromCaja(confirmed,today);
- // Capital de los socios. El total declarado (hoja APORTES_CAPITAL_SOCIOS) incluye los aportes que se van pasando a la caja de a poco,
- // así que no se suman: vale el mayor entre lo declarado y lo ya registrado en caja (concepto de aporte, aunque el importe siga por confirmar).
- // Las filas con movimiento_id son la ficha de un aporte que ya está en la caja (se crean al clasificarlo); el total en bruto es el que no tiene movimiento.
- const contribs=(d.contributions||[]).filter(active).filter(x=>x.estado!=='ANULADO'&&!String(x.movimiento_id||'').trim()),inCash=counted.filter(m=>m.naturaleza==='APORTE_CAPITAL'&&m.direccion==='ENTRADA');
+ // Capital de los socios = lo registrado en la caja con concepto de aporte de capital (aunque el importe siga por confirmar).
+ const inCash=counted.filter(m=>m.naturaleza==='APORTE_CAPITAL'&&m.direccion==='ENTRADA');
  const socioOf=m=>{const t=String(m.socio||'').trim()||String(m.descripcion||'').trim();return t?t.toLowerCase().replace(/(^|\s)\S/g,x=>x.toUpperCase()):'Sin socio';};
  const bySocio={};inCash.forEach(m=>{const k=socioOf(m);bySocio[k]=(bySocio[k]||0)+Number(m.monto);});
- const capital={declared:contribs.reduce((s,x)=>s+(n(x.monto)||0),0),inCash:inCash.reduce((s,m)=>s+Number(m.monto),0),bySocio,rows:contribs.map(x=>({id:x.aporte_id,socio:x.socio,fecha:x.fecha,monto:n(x.monto)}))};
- capital.total=Math.max(capital.declared,capital.inCash);capital.pendingCash=Math.max(0,capital.declared-capital.inCash);
+ const capital={total:inCash.reduce((s,m)=>s+Number(m.monto),0),bySocio};
  const month=today.slice(0,7),monthMoves=confirmed.filter(m=>String(m.fecha_operacion).slice(0,7)===month);
  const dashboard=analytics(d,today,cars,confirmed,accountRows,counted);
  const reconciliation=reconcile(d,today),warnings=reconciliation.filter(x=>x.status==='DESCUADRE').map(x=>x.name+': falta un flujo por '+Math.abs(x.diff)+' ('+(x.diff>0?'entrada':'salida')+').');
