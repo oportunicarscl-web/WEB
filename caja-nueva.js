@@ -114,6 +114,16 @@ function movLine(a){
  const real=realMp(a),diff=real===null?null:real-mb.value;
  return `<small class="cn-mov">Por movimientos desde ${esc(fmtDate(a.cut||start))}: <b>${money(mb.value)}</b> (${mb.count} mov.${mb.skipped?`, ${mb.skipped} sin dirección o importe`:''})${diff===null?'':` · diferencia con el real: <b class="${diff===0?'cn-ok':'cn-bad'}">${diff===0?'cuadra':money(diff)}</b>`}</small>`;
 }
+// Saldo de cada cuenta tal como lo muestra Caja y bancos: Mercado Pago = inicial + todos sus movimientos; el resto = inicial + movimientos completos.
+function accountBalances(){
+ if(!s)return [];
+ const infos=accountsInfo(),bal=balances(infos,s.movements,start,'nueva');
+ return infos.map(a=>{
+  const b=bal[a.id]||{},mp=/mercado/i.test(a.name),mb=mp?movementBalance(a,s.movements,start):null;
+  const value=mp?(mb?mb.value:null):(b.computed===undefined?null:b.computed);
+  return {id:a.id,name:a.name,opening:a.opening,cut:a.cut||start,value,pending:b.pending||{count:0,sum:0}};
+ });
+}
 const isOff=id=>!!(s&&s.off&&s.off.has(String(id)));
 const cardAttr=a=>`class="cn-card ${isOff(a.id)?'cn-off':'cn-sel'}" data-acc="${esc(a.id)}" role="button" tabindex="0" aria-pressed="${isOff(a.id)?'false':'true'}" title="Filtrar por ${esc(a.name)}"`;
 function accountCard(a,bl){
@@ -243,5 +253,5 @@ function setupDialog(el){
   catch(err){status.textContent=err.message;}
  };
 }
-root.OCCajaNueva={...api,tokenDialog:el=>tokenDialog(el),setup,reset,markup,mount,snapshot,replaceMovements,addMovements,movementsBySource,removeMovement};
+root.OCCajaNueva={...api,accountBalances,tokenDialog:el=>tokenDialog(el),setup,reset,markup,mount,snapshot,replaceMovements,addMovements,movementsBySource,removeMovement};
 })(typeof globalThis==='undefined'?this:globalThis);

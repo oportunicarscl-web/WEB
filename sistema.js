@@ -89,11 +89,38 @@ function carExpensesCard(rows){
  return bars('Costos asignados a autos, por concepto',rows.map(x=>[x.name+' · '+x.cars+(x.cars===1?' auto':' autos'),x.total]),true,
   rows.length?'<p><b>Total asignado a autos: '+money(total)+'</b> · este mes '+money(month)+'</p><details><summary>Ver por concepto</summary>'+table(['Concepto','Autos','Movimientos','Este mes','Total'],rows.map(x=>[esc(x.name),x.cars,x.count,money(x.month),money(x.total)]))+'</details>':'<p>Cuando asignes un costo a un auto en Caja y bancos (lavado, combustible, fotos, publicación) aparecerá sumado aquí.</p>');
 }
+// Caja: los mismos saldos por cuenta que muestra Caja y bancos. Stock propio al costo: compra + gastos de cada auto propio en stock.
+function cashPosition(){
+ const rows=root.OCCajaNueva&&root.OCCajaNueva.accountBalances?root.OCCajaNueva.accountBalances():[];
+ const known=rows.filter(a=>Number.isFinite(a.value));
+ return {rows,total:known.length?known.reduce((s,a)=>s+a.value,0):null,missing:rows.length-known.length};
+}
+function stockPosition(cars){
+ const list=cars.filter(c=>c.modality==='PROPIO'&&!c.sold&&c.status!=='RETIRADO').map(c=>({...c,atCost:(c.purchase||0)+(c.preparation||0)})).sort((a,b)=>b.atCost-a.atCost);
+ const sum=k=>list.reduce((s,c)=>s+(c[k]||0),0);
+ return {list,purchase:sum('purchase'),preparation:sum('preparation'),total:sum('atCost'),missing:list.filter(c=>c.purchase===null).length};
+}
+function positionSection(r,cars){
+ const cash=cashPosition(),stock=stockPosition(cars),cut=(cash.rows[0]||{}).cut;
+ const total=cash.total===null?null:cash.total+stock.total;
+ const head='<section class="oc-metrics os-position">'+
+  '<article><p>Caja y bancos</p><strong>'+money(cash.total)+'</strong><small>'+cash.rows.length+' cuentas · mismos saldos que Caja y bancos'+(cash.missing?' · <b class="oc-bad">'+cash.missing+' sin saldo inicial</b>':'')+'</small></article>'+
+  '<article><p>Stock propio al costo</p><strong>'+money(stock.total)+'</strong><small>'+stock.list.length+' autos · compra '+money(stock.purchase)+' + gastos '+money(stock.preparation)+(stock.missing?' · <b class="oc-bad">'+stock.missing+' sin compra</b>':'')+'</small></article>'+
+  '<article class="os-sum"><p>Caja + stock al costo</p><strong>'+money(total)+'</strong><small>Al '+esc(fmtDay(r.today||today()))+'</small></article></section>';
+ const cashCard='<section class="oc-card"><h2>Caja y bancos</h2><p><small>Saldo inicial al '+esc(fmtDay(cut||''))+' más los movimientos registrados desde entonces.</small></p>'+
+  table(['Cuenta','Saldo inicial','Saldo actual','Por completar'],cash.rows.map(a=>[esc(a.name),money(a.opening),'<b>'+(Number.isFinite(a.value)?money(a.value):'<span class="oc-bad">Sin saldo inicial</span>')+'</b>',a.pending.count?'<span class="oc-warn-text">'+a.pending.count+' · '+money(a.pending.sum)+'</span>':'<span class="oc-ok">Al día</span>'])
+   .concat([['<b>Total</b>','','<b>'+money(cash.total)+'</b>','']]))+'</section>';
+ const stockCard='<section class="oc-card"><h2>Stock propio al costo</h2><p><small>Compra + gastos asignados en la caja a cada auto propio que sigue en stock.</small></p>'+
+  table(['Auto','Ingreso','Días','Compra','Gastos','Al costo'],stock.list.map(c=>[esc(car(c.id)),esc(c.entryDate?fmtDay(c.entryDate):'—'),esc(c.days??'—'),c.purchase===null?'<b class="oc-bad">Falta</b>':money(c.purchase),c.preparation?money(c.preparation):'—','<b>'+money(c.atCost)+'</b>'])
+   .concat([['<b>Total · '+stock.list.length+' autos</b>','','','<b>'+money(stock.purchase)+'</b>','<b>'+money(stock.preparation)+'</b>','<b>'+money(stock.total)+'</b>']]))+'</section>';
+ return {html:head+'<div class="os-position-grid">'+cashCard+stockCard+'</div>',cash,stock};
+}
 function management(r,cars){
- const a=r.dashboard||{},h=a.history||[];
+ const a=r.dashboard||{},h=a.history||[],pos=positionSection(r,cars);
+ const patrimony=pos.cash.total===null?null:pos.cash.total+pos.stock.total+(r.receivable||0)+(r.loanAsset||0)-(r.debt||0);
  const metrics=[['Ventas del mes',r.salesMonth??0],['Ingresos por ventas',money(a.revenue)],['Margen promedio',Number.isFinite(a.margin)?a.margin.toFixed(1)+' %':'Sin datos'],['Autos en stock',a.stockCount??cars.filter(c=>!c.sold).length],['Cuentas por cobrar',money(r.receivable)],['Cuentas por pagar',money(r.debt)]];
- return '<section class="oc-metrics oc-six">'+metrics.map(([k,v])=>'<article><p>'+k+'</p><strong>'+v+'</strong></article>').join('')+'</section><p>Historia desde '+esc(a.start||'el primer registro')+(a.companyStartKnown?'':' · primer dato disponible; fecha de creación por definir')+'. Los importes sin confirmar no se presentan como saldos reales.</p>'+
- '<div class="oc-dashboard-grid">'+salesChart(h)+bars('Estado de inventario',Object.entries(a.states||{}))+bars('Rentabilidad · últimos 4 vendidos',(a.lastSold||[]).map(c=>[c.label,c.result]),true)+trend('Flujo de caja mensual',h,[['entries','Ingresos','#36765a'],['exits','Egresos','#a23e38']])+bars('Composición de gastos',Object.entries(a.expenses||{}),true)+carExpensesCard(a.carExpenses||[])+bars('Patrimonio actual',[['Caja',r.cash],['Stock propio al costo',r.stock],['Por cobrar',r.receivable],['Préstamos otorgados',r.loanAsset],['Obligaciones',r.debt===null?null:-r.debt],['Patrimonio',r.patrimony]],true)+'</div>'+
+ return pos.html+'<section class="oc-metrics oc-six">'+metrics.map(([k,v])=>'<article><p>'+k+'</p><strong>'+v+'</strong></article>').join('')+'</section><p>Historia desde '+esc(a.start||'el primer registro')+(a.companyStartKnown?'':' · primer dato disponible; fecha de creación por definir')+'. Los importes sin confirmar no se presentan como saldos reales.</p>'+
+ '<div class="oc-dashboard-grid">'+salesChart(h)+bars('Estado de inventario',Object.entries(a.states||{}))+bars('Rentabilidad · últimos 4 vendidos',(a.lastSold||[]).map(c=>[c.label,c.result]),true)+trend('Flujo de caja mensual',h,[['entries','Ingresos','#36765a'],['exits','Egresos','#a23e38']])+bars('Composición de gastos',Object.entries(a.expenses||{}),true)+carExpensesCard(a.carExpenses||[])+bars('Patrimonio actual',[['Caja y bancos',pos.cash.total],['Stock propio al costo',pos.stock.total],['Por cobrar',r.receivable],['Préstamos otorgados',r.loanAsset],['Obligaciones',r.debt===null?null:-r.debt],['Patrimonio',patrimony]],true)+'</div>'+
  trend('Saldos bancarios históricos',h,[['balance','Saldo consolidado','#947243']])+
  '<section class="oc-card"><h2>Resultado por auto</h2>'+table(['Auto','Estado','Días','Compra','Preparación','Venta','Resultado'],cars.map(c=>[esc(car(c.id)),esc(title(c.status)),esc(c.days??'—'),money(c.purchase),money(c.preparation),money(c.sale),money(c.result)]))+'</section>';
 }

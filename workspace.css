@@ -198,3 +198,7 @@ body.workspace-open{
 #oc-workspace .cn-card.cn-sel{border-color:#1f1710;box-shadow:0 0 0 1px #1f1710 inset}
 #oc-workspace .cn-card.cn-off{opacity:.45}
 #oc-workspace .cn-card[data-acc]:focus-visible{outline:2px solid #b4935f;outline-offset:2px}
+/* Resumen: posición de caja y stock al costo */
+#oc-workspace .os-position{grid-template-columns:repeat(3,1fr)}#oc-workspace .os-position .os-sum{background:#f6efe2}#oc-workspace .os-position strong{font-size:30px}
+#oc-workspace .os-position-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px;margin-bottom:22px}#oc-workspace .os-position-grid td:nth-child(n+2),#oc-workspace .os-position-grid th:nth-child(n+2){text-align:right;white-space:nowrap}#oc-workspace .os-position-grid tr:last-child td{border-top:2px solid #b4935f}
+@media(max-width:1100px){#oc-workspace .os-position-grid{grid-template-columns:1fr}}@media(max-width:700px){#oc-workspace .os-position{grid-template-columns:1fr}}
