@@ -209,3 +209,13 @@ body.workspace-open{
 @media(max-width:700px){#oc-workspace .os-cap-row{grid-template-columns:1fr}#oc-workspace .os-cap-row b{text-align:left}#oc-workspace .os-cap-head{flex-direction:column}}
 /* Autos y operación: el encabezado de la tabla queda fijo y solo se deslizan los autos */
 #oc-workspace #os-cars thead th{position:sticky;top:0;z-index:2;box-shadow:0 1px 0 #d9c8ac}
+/* Liquidaciones (solo Alex) */
+#oc-liq .lq-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:14px 0}
+#oc-liq .lq-kpis div{border:1px solid #e3d6bf;border-radius:10px;padding:10px 14px;background:#fffaf1}
+#oc-liq .lq-kpis small{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
+#oc-liq .lq-kpis b{font-size:20px}
+.lq-table{width:100%;border-collapse:collapse}.lq-table th,.lq-table td{padding:6px 8px;border-bottom:1px solid #eadfcd;text-align:left;vertical-align:middle}
+.lq-table td:nth-child(n+2){white-space:nowrap}.lq-table input{width:130px}
+.lq-link{background:none;border:0;padding:0;color:#7a5a2c;text-decoration:underline;cursor:pointer;font:inherit}.lq-empty{opacity:.6}
+#oc-liq .cn-ok,.lq-alloc .cn-ok{color:#2f6b3b}#oc-liq .cn-bad,.lq-alloc .cn-bad{color:#a23b2a}#oc-liq .cn-warn,.lq-alloc .cn-warn{color:#9a6a12}
+#oc-liq h3{margin-top:18px}
