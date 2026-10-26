@@ -60,7 +60,7 @@ function ocBootstrap_(actor){const check=revisarEstructuraCaja();if(!check.compa
 var ocAccountCache_;
 function ocAccountsCached_(){return ocAccountCache_||(ocAccountCache_=ocAccounts_());}
 function ocValidateConcept_(c){
-  if(!c||typeof c.id!=='string'||!/^[a-zA-Z0-9_-]{1,80}$/.test(c.id)||typeof c.name!=='string'||!c.name.trim()||c.name.length>100||typeof c.category!=='string'||!c.category.trim()||c.category.length>80)throw Error('Nombre o categoría inválidos.');
+  if(!c||typeof c.id!=='string'||!/^[\w&.-]{1,80}$/.test(c.id)||typeof c.name!=='string'||!c.name.trim()||c.name.length>100||typeof c.category!=='string'||!c.category.trim()||c.category.length>80)throw Error('Nombre o categoría inválidos.');
   if(['GASTO','COSTO','INGRESO','TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].indexOf(c.nature)<0||['FIJO','VARIABLE','NO_APLICA'].indexOf(c.cost)<0||['','COMPRA','ARREGLO','VENTA','COSTO_AUTO'].indexOf(c.vehicleOperation)<0||typeof c.recurring!=='boolean')throw Error('Clasificación inválida.');
   if(c.vehicleOperation&&c.nature!==(c.vehicleOperation==='VENTA'?'INGRESO':'COSTO'))throw Error('Compra y arreglo son costos; venta es ingreso.');
 }

@@ -185,7 +185,7 @@ function settings(st,r){
  table(['Cuenta','Saldo inicial','Fecha de corte','Saldo calculado hoy','Cuadre',''],(st.accounts||[]).map(a=>{const x=rec[a.cuenta_id]||{};return [esc(a.nombre),a.saldo_inicial===''?'Por completar':money(Number(a.saldo_inicial)),esc(a.fecha_saldo_inicial),x.computed===null||x.computed===undefined?'—':money(x.computed),reconText(x),'<button data-balance="'+esc(a.cuenta_id)+'">Editar saldo</button> <button data-reconcile="'+esc(a.cuenta_id)+'">Cuadrar</button>'];}))+'</section>';
 }
 
-function rerender(){const c=host.querySelector('#oc-content');if(c)c.innerHTML=markup(view);mount(host);}
+function rerender(){const c=host.querySelector('#oc-content');if(c)c.innerHTML=markup(view)+(view==='parametros'&&root.OCConfig?root.OCConfig.markup():'');mount(host);if(view==='parametros')root.OCConfig?.mount(host);}
 const flash=(text)=>{message=text;rerender();};
 function dialog(body){const d=document.createElement('dialog');d.className='oc-dialog';d.innerHTML=body;document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();return d;}
 function input([name,label,type],value){

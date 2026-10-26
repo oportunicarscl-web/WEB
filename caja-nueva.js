@@ -222,7 +222,7 @@ function wire(el){
  el.querySelectorAll('[data-concept]').forEach(b=>b.onchange=()=>{
   if(!b.value)return;const m=s.movements.find(x=>x.id===b.dataset.concept),c=s.concepts.find(x=>x.id===b.value);
   try{const next=root.OCCaja.classify(m,c,m.classification?.vehicleId||null,s.inventory.map(v=>({...v,id:v.id})));
-   if(['APORTE_CAPITAL','PRESTAMO'].includes(c.nature)){if(mode==='hist'){linkDialog(el,next,b);return;}b.value='';s.message='Los aportes y préstamos se completan en la Caja histórica con su detalle.';draw(el);return;}
+   if(['APORTE_CAPITAL','PRESTAMO'].includes(c.nature)){if(mode==='hist'){if(c.nature==='APORTE_CAPITAL'&&next.direction!=='ENTRADA'){next.direction='ENTRADA';next.directionInferred=true;}linkDialog(el,next,b);return;}b.value='';s.message='Los aportes y préstamos se completan en la Caja histórica con su detalle.';draw(el);return;}
    persist(el,next);}catch(e){s.message=e.message;draw(el);}
  });
  el.querySelectorAll('[data-car]').forEach(b=>b.onchange=()=>{
@@ -255,15 +255,17 @@ async function autoMatch(el){
 }
 // Corregir un atajo mal ingresado (solo administrador): fecha, monto, ingreso/egreso, cuenta, concepto, auto y comentario.
 // Aportes y préstamos (solo Caja histórica): piden el socio o el préstamo antes de guardar.
-function linkDialog(el,next,select){
+// El aporte siempre es un ingreso y el socio sale de la lista cerrada de Configuración → Socios.
+async function linkDialog(el,next,select){
  const c=next.classification||{},aporte=c.nature==='APORTE_CAPITAL',loans=config.loans||[];
- const socios=[...new Set(s.movements.map(m=>String(m.socio||'').trim()).filter(Boolean))].sort();
+ let socios=[];if(aporte){try{socios=(await root.OCConfig?.socios()||[]).filter(x=>x.habilitado!=='NO').map(x=>x.nombre);}catch(e){s.message=e.message;draw(el);if(select)select.value='';return;}}
+ const guess=socios.find(n=>n.toLowerCase()===String(next.socio||'').trim().toLowerCase())||socios.find(n=>String(next.description||'').toLowerCase().includes(n.toLowerCase()))||'';
  const opt=(rows,cur)=>'<option value="">Elegir…</option>'+rows.map(([v,l])=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(l)}</option>`).join('');
  const d=document.createElement('dialog');d.className='oc-dialog';d.dataset.cnDialog='';
  d.innerHTML=`<form><h2>${aporte?'Aporte de capital':'Préstamo'}</h2><p>${esc(fmtDate(next.date))} · ${esc(next.description||'')} · <b>${money(next.amount)}</b></p><div class="oc-caja-form">${aporte
-  ?`<label>Socio<input name="socio" list="cn-socios" required maxlength="80" value="${esc(next.socio||'')}" autocomplete="off"></label><datalist id="cn-socios">${socios.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>`
+  ?(socios.length?`<label>Socio<select name="socio" required>${opt(socios.map(n=>[n,n]),guess)}</select></label><p><small>Queda registrado como ingreso.</small></p>`:'<p>No hay socios creados. Agrégalos en Configuración → Socios.</p>')
   :`<label>Préstamo<select name="prestamoId" required>${opt(loans.map(l=>[String(l.prestamo_id),l.nombre||String(l.prestamo_id)]),next.prestamoId)}</select></label><label>Componente<select name="loanComponent" required>${opt([['DESEMBOLSO','Desembolso (entra el préstamo)'],['AMORTIZACION','Devolución de principal'],['INTERES','Interés']],next.loanComponent)}</select></label>${loans.length?'':'<p><small>No hay préstamos creados. Créalo primero en Compromisos no caja → Préstamos.</small></p>'}`}
- </div><p role="status"></p><button type="submit"${!aporte&&!loans.length?' disabled':''}>Guardar</button> <button type="button" id="cn-cancel">Cancelar</button></form>`;
+ </div><p role="status"></p><button type="submit"${!aporte&&!loans.length||aporte&&!socios.length?' disabled':''}>Guardar</button> <button type="button" id="cn-cancel">Cancelar</button></form>`;
  const close=()=>{if(select)select.value='';d.close();};
  document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();d.querySelector('#cn-cancel').onclick=close;
  d.querySelector('form').onsubmit=e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));
@@ -306,5 +308,6 @@ function setupDialog(el){
   catch(err){status.textContent=err.message;}
  };
 }
-root.OCCajaNueva={...api,accountBalances,tokenDialog:el=>tokenDialog(el),setup,reset,markup,mount,snapshot,replaceMovements,addMovements,movementsBySource,removeMovement};
+function upsertConcept(c){if(!s)return;const i=s.concepts.findIndex(x=>x.id===c.id);if(i>=0)s.concepts[i]=c;else s.concepts.push(c);}
+root.OCCajaNueva={...api,upsertConcept,accountBalances,tokenDialog:el=>tokenDialog(el),setup,reset,markup,mount,snapshot,replaceMovements,addMovements,movementsBySource,removeMovement};
 })(typeof globalThis==='undefined'?this:globalThis);
