@@ -69,3 +69,8 @@ test('Flujo mensual separa negocio, aportes de socios, gastos fijos y no fijos; 
  assert.equal(h.business,10100);assert.equal(h.contributions,5000);assert.equal(h.fixedExits,300);assert.equal(h.variableExits,9500);
  assert.equal(r.dashboard.profit,600);assert.equal(r.dashboard.profitSales,10100);
 });
+test('Costo de estacionamiento: sobre N días suma (días − N) × valor; configurable',()=>{const d=data();d.operations[0].estado_auto='VENDIDO';d.operations[0].fecha_venta='2026-10-11';d.operations[0].precio_venta=150;
+ const base=core.reports({...d,settings:{parkingDays:30,parkingRate:0}},'2026-10-19').cars[0];
+ const r=core.reports({...d,settings:{parkingDays:5,parkingRate:3}},'2026-10-19').cars[0];
+ assert.equal(r.parking,(base.days-5)*3);assert.equal(r.result,base.result-r.parking);
+ assert.equal(core.reports({...d,settings:{parkingDays:999,parkingRate:3}},'2026-10-19').cars[0].parking,0);});

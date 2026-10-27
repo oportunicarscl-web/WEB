@@ -63,7 +63,7 @@ let s,config,start,matched=false,mode='nueva';
 function reset(){s=null;config=null;matched=false;document.querySelectorAll('[data-cn-dialog]').forEach(d=>d.remove());}
 function setup(options={}){
  config=options;start=options.cashStart||'2026-10-15';matched=false;
- s={movements:(options.movements||[]).slice(),concepts:options.concepts||[],inventory:options.inventory||[],tab:{nueva:'',hist:''},off:new Set(),editing:'',message:'',busy:false,checks:{},limit:80};
+ s={movements:(options.movements||[]).slice(),concepts:options.concepts||[],inventory:options.inventory||[],tab:{nueva:'',hist:''},off:new Set(),sel:new Set(),bulk:{concept:'',car:''},editing:'',message:'',busy:false,checks:{},limit:80};
 }
 const snapshot=()=>s?{movements:s.movements,concepts:s.concepts}:null;
 function replaceMovements(list){if(s)s.movements=list;}
@@ -73,7 +73,7 @@ function removeMovement(id){if(s)s.movements=s.movements.filter(m=>m.id!==id);}
 const accountsInfo=()=>config?.accountsInfo?config.accountsInfo():[];
 const carLabel=v=>[v.patente||'Sin patente',v.modelo].filter(Boolean).join(' · ');
 function carIndex(){const seen={},map=new Map();s.inventory.forEach(v=>{let l=carLabel(v);if(seen[l])l+=' #'+v.id;seen[l]=1;map.set(l,v);});return map;}
-function markup(m){mode=m==='hist'?'hist':'nueva';return '<section id="oc-caja-nueva" class="oc-card"></section>';}
+function markup(m){mode=m==='hist'?'hist':'nueva';if(s){s.sel.clear();s.bulk={concept:'',car:''};}return '<section id="oc-caja-nueva" class="oc-card"></section>';}
 function mount(parent){const el=parent.querySelector('#oc-caja-nueva');if(el&&s){draw(el);if(mode==='nueva')autoMatch(el);}}
 function conceptsFor(m){return s.concepts.filter(c=>m.direction===ENT?['INGRESO','TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].includes(c.nature):m.direction===SAL?c.nature!=='INGRESO':true);}
 const realMp=a=>s&&s.mpBalance&&/mercado/i.test(a.name)?Number(s.mpBalance.saldo):null;
@@ -147,9 +147,40 @@ function controls(m){
   (c||m.confirmed?`<button data-unassign="${m.id}" class="cn-undo">Deshacer asignación</button>`:'')+'</div>';
 }
 const canFixQuick=m=>!!(config&&config.isAdmin&&config.quickEdit&&m.source==='ATAJO');
+// Ingresado por personas (a mano o atajo): se corrige entero y se puede eliminar. Banco / Mercado Pago: nunca se elimina.
+const isOwn=m=>m.source==='MANUAL'||m.source==='ATAJO'||m.origin==='MANUAL';
 function gear(m){
- const open=s.gear===m.id,fix=canFixQuick(m),quickOpen=isQuickOpen(m);
- return `<div class="cn-gearbox"><button class="cn-gear" data-gear="${m.id}" title="${fix?'Corregir atajo':'Cambiar ingreso/egreso'}" aria-label="${fix?'Corregir atajo':'Cambiar ingreso o egreso'}">⚙</button>${open?`<span class="cn-flip">${fix?`<button data-qfix="${m.id}">Corregir atajo</button><button data-qvoid="${m.id}">Anular atajo</button>`:''}${quickOpen?'':`<button data-flip="${m.id}" data-v="${ENT}"${m.direction===ENT&&!m.directionInferred?' disabled':''}>Es ingreso</button><button data-flip="${m.id}" data-v="${SAL}"${m.direction===SAL&&!m.directionInferred?' disabled':''}>Es egreso</button>`}</span>`:''}</div>`;
+ const open=s.gear===m.id,quickOpen=isQuickOpen(m),edit=!!config.editMovement;
+ return `<div class="cn-gearbox"><button class="cn-gear" data-gear="${m.id}" title="Corregir movimiento" aria-label="Corregir movimiento">⚙</button>${open?`<span class="cn-flip">${quickOpen?'':`<button data-flip="${m.id}" data-v="${ENT}"${m.direction===ENT&&!m.directionInferred?' disabled':''}>Es ingreso</button><button data-flip="${m.id}" data-v="${SAL}"${m.direction===SAL&&!m.directionInferred?' disabled':''}>Es egreso</button>`}${edit?`<button data-medit="${m.id}">Editar…</button>`:''}${edit&&isOwn(m)?`<button data-mvoid="${m.id}" class="cn-undo">Eliminar</button>`:''}</span>`:''}</div>`;
+}
+// ---------- Selección múltiple (solo del mismo signo) ----------
+const signOf=m=>m.direction===ENT||m.direction===SAL?m.direction:'';
+function selDir(){for(const id of s.sel){const m=s.movements.find(x=>x.id===id);if(m)return signOf(m);}return '';}
+function pickable(m){const d=signOf(m);if(!d||m.saving)return false;const cur=selDir();return !cur||cur===d;}
+function bulkBar(){
+ const ms=[...s.sel].map(id=>s.movements.find(x=>x.id===id)).filter(Boolean);if(!ms.length)return '';
+ const dir=selDir(),total=ms.reduce((a,m)=>a+(m.amount||0),0),list=conceptsFor(ms[0]).filter(c=>!['APORTE_CAPITAL','PRESTAMO'].includes(c.nature));
+ const c=s.concepts.find(x=>x.id===s.bulk.concept),unconf=ms.filter(m=>!m.confirmed&&Number.isFinite(m.amount)).length;
+ return `<div class="cn-bulk"><b>${ms.length} ${dir===ENT?'ingresos':'egresos'} seleccionados · ${money(total)}</b>
+  <select id="cn-bulk-concept"><option value="">Concepto para todos…</option>${list.map(x=>`<option value="${esc(x.id)}"${x.id===s.bulk.concept?' selected':''}>${esc(x.name)}</option>`).join('')}</select>
+  ${c&&c.vehicleOperation?`<input id="cn-bulk-car" list="cn-cars" placeholder="Auto (patente, marca o modelo)" value="${esc(s.bulk.car)}">`:''}
+  <button id="cn-bulk-apply"${c&&!s.busy?'':' disabled'}>Asignar a los ${ms.length}</button>${unconf?`<button id="cn-bulk-confirm"${s.busy?' disabled':''}>Confirmar ${unconf} importe${unconf===1?'':'s'}</button>`:''}<button id="cn-bulk-clear" class="cn-undo">Quitar selección</button></div>`;
+}
+async function bulkApply(el){
+ const c=s.concepts.find(x=>x.id===s.bulk.concept);if(!c||s.busy)return;
+ let v=null;if(c.vehicleOperation&&s.bulk.car.trim()){v=carIndex().get(s.bulk.car.trim());if(!v){s.message='Elige un auto de la lista (patente, marca o modelo).';draw(el);return;}}
+ const ids=[...s.sel];s.busy=true;let n=0;
+ for(const id of ids){const m=s.movements.find(x=>x.id===id);if(!m)continue;s.message=`Asignando ${n+1} de ${ids.length}…`;draw(el);
+  try{const next=root.OCCaja.classify(m,c,v?String(v.id):(m.classification?.vehicleId||null),s.inventory.map(x=>({...x,id:x.id})));
+   const saved=await config.saveMovement(next);replace({...(saved||next),saving:false});n++;s.sel.delete(id);}
+  catch(e){s.message=e.message+` (${n} de ${ids.length} asignados)`;break;}}
+ s.busy=false;if(n===ids.length){s.message=`${n} movimiento${n===1?'':'s'} asignado${n===1?'':'s'} a «${c.name}»${v?' · '+carLabel(v):''}.`;s.bulk={concept:'',car:''};}draw(el);
+}
+async function bulkConfirm(el){
+ const ids=[...s.sel];s.busy=true;let n=0;
+ for(const id of ids){const m=s.movements.find(x=>x.id===id);if(!m||m.confirmed||!Number.isFinite(m.amount))continue;
+  try{replace(await config.confirmAmount(m));n++;}catch(e){s.message=e.message;break;}}
+ s.busy=false;if(!s.message||/^Guardado/.test(s.message))s.message=n+' importes confirmados.';draw(el);
 }
 function rowMarkup(m,bl,tab){
  const tone=m.direction===ENT&&!m.directionInferred?'oc-in':m.direction===SAL&&!m.directionInferred?'oc-out':'oc-unknown',miss=missing(m);
@@ -158,7 +189,8 @@ function rowMarkup(m,bl,tab){
  const right=quick?'':open?controls(m):`<div class="cn-controls"><button data-edit="${m.id}" class="cn-edit">Corregir</button></div>`;
  const run=tab==='movimientos'&&bl?.running[m.id]!==undefined?`<small class="cn-run">Saldo ${money(bl.running[m.id])}</small>`:'';
  const tag=quick?'<span class="oc-chip oc-chip-warn">Registrado · espera el movimiento real</span>':miss.length&&tab==='completar'?miss.map(x=>`<span class="oc-chip oc-chip-bad">Falta ${esc(x.toLowerCase())}</span>`).join(' '):'';
- return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${quick?' cn-gray':''}"><div><small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div><div class="cn-side">${right}${quick&&!canFixQuick(m)?'':gear(m)}</div></article>`;
+ const pick=pickable(m),on=s.sel.has(m.id);
+ return `<article class="oc-caja-row oc-row-${tone}${m.saving?' oc-saving':''}${quick?' cn-gray':''}${on?' cn-picked':''}"><div>${quick?'':`<label class="cn-pick" title="${pick?'Seleccionar para tratar en conjunto':'Solo se agrupan movimientos del mismo signo (ingreso o egreso)'}"><input type="checkbox" data-pick="${m.id}"${on?' checked':''}${pick||on?'':' disabled'}></label>`}<small>${esc(m.account)} · ${fmtDate(m.date)}</small><h3>${esc(m.description)}</h3><strong class="oc-amount ${tone}">${sign}${money(m.amount)}</strong> ${tag}${m.classification?`<small>${esc(m.classification.name)}${m.classification.vehicleId?' · auto asignado':''}</small>`:''}${run}</div><div class="cn-side">${right}${gear(m)}</div></article>`;
 }
 function draw(el){
  const hist=mode==='hist',infos=accountsInfo().filter(a=>!hist||!HIST_HIDDEN.test(a.name)),bal=balances(infos,s.movements,start,mode),all=s.movements.filter(m=>inRange(m,start,mode)&&!isOff(m.accountId));
@@ -180,6 +212,7 @@ function draw(el){
  <div class="oc-tabs"><button class="oc-tab${tab==='completar'?' active':''}" data-cn-tab="completar">Por completar (${todo.length})</button><button class="oc-tab${tab==='movimientos'?' active':''}" data-cn-tab="movimientos">Movimientos (${done.length})</button>${quick.length||!hist?`<button class="oc-tab${tab==='atajos'?' active':''}" data-cn-tab="atajos">Registrados por atajo (${quick.length})</button>`:''}</div>
  ${tab==='completar'&&completable.length>1?`<p><button id="cn-confirm-all">Confirmar ${completable.length} importes ya completos</button></p>`:''}
  <datalist id="cn-cars">${[...carIndex().keys()].map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist>
+ ${tab==='atajos'?'':bulkBar()||`<p class="cn-bulk-hint"><small>Marca la casilla de varios movimientos del mismo signo para asignarlos en conjunto${list.length?` · <button id="cn-pick-all" class="lq-link">seleccionar los ${Math.min(list.length,s.limit)} visibles del signo del primero</button>`:''}.</small></p>`}
  <div class="oc-caja-list">${list.slice(0,s.limit).map(m=>rowMarkup(m,balOf(m),tab)).join('')||'<p>Nada por aquí.</p>'}</div>
  ${list.length>s.limit?`<p><button id="cn-more">Mostrar más (${list.length-s.limit})</button></p>`:''}`;
  wire(el);
@@ -230,6 +263,20 @@ function wire(el){
   const m=s.movements.find(x=>x.id===b.dataset.car);try{persist(el,root.OCCaja.assignVehicle(m,v.id,s.inventory));}catch(e){s.message=e.message;draw(el);}
  });
  el.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{s.editing=b.dataset.edit;draw(el);});
+ el.querySelectorAll('[data-pick]').forEach(x=>x.onchange=()=>{if(x.checked)s.sel.add(x.dataset.pick);else s.sel.delete(x.dataset.pick);draw(el);});
+ const pa=el.querySelector('#cn-pick-all');if(pa)pa.onclick=()=>{const rows=[...el.querySelectorAll('[data-pick]')].map(x=>s.movements.find(m=>m.id===x.dataset.pick)).filter(Boolean);const d=signOf(rows.find(m=>signOf(m))||{});rows.filter(m=>signOf(m)===d&&!m.saving).forEach(m=>s.sel.add(m.id));draw(el);};
+ const bc=el.querySelector('#cn-bulk-concept');if(bc)bc.onchange=()=>{s.bulk.concept=bc.value;draw(el);};
+ const bcar=el.querySelector('#cn-bulk-car');if(bcar)bcar.onchange=()=>{s.bulk.car=bcar.value;};
+ const ba=el.querySelector('#cn-bulk-apply');if(ba)ba.onclick=()=>{if(bcar)s.bulk.car=bcar.value;bulkApply(el);};
+ const bf=el.querySelector('#cn-bulk-confirm');if(bf)bf.onclick=()=>bulkConfirm(el);
+ const bx=el.querySelector('#cn-bulk-clear');if(bx)bx.onclick=()=>{s.sel.clear();s.bulk={concept:'',car:''};draw(el);};
+ el.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.medit);s.gear='';if(m)editDialog(el,m);else draw(el);});
+ el.querySelectorAll('[data-mvoid]').forEach(b=>b.onclick=async()=>{
+  const m=s.movements.find(x=>x.id===b.dataset.mvoid);s.gear='';if(!m||m.saving)return;
+  if(!confirm('¿Eliminar este movimiento ingresado a mano? Deja de contar en las cajas.')){draw(el);return;}
+  try{await config.voidMovement(m);removeMovement(m.id);s.sel.delete(m.id);s.message='Movimiento eliminado.';}catch(e){s.message=e.message;}
+  draw(el);
+ });
  el.querySelectorAll('[data-unassign]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.unassign);if(!m||!config.unassign)return;if(!confirm('¿Deshacer la asignación de este movimiento? Vuelve a «Por completar» y deja de contar en el saldo.'))return;s.editing='';run(el,m,()=>config.unassign(m));});
  el.querySelectorAll('[data-confirm]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.confirm);run(el,m,()=>config.confirmAmount(m));});
  const all=el.querySelector('#cn-confirm-all');
@@ -271,6 +318,32 @@ async function linkDialog(el,next,select){
  d.querySelector('form').onsubmit=e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));
   if(aporte)f.socio=String(f.socio||'').trim();if(aporte&&!f.socio){d.querySelector('[role=status]').textContent='Indica el socio.';return;}
   d.close();persist(el,{...next,...f});};
+}
+// Editar todo lo editable: lo ingresado por personas entero; lo del banco / Mercado Pago solo ingreso-egreso, concepto y auto.
+function editDialog(el,m){
+ const own=isOwn(m),c=m.classification,acc=accountsInfo(),carOf=id=>{const v=s.inventory.find(x=>String(x.id)===String(id));return v?carLabel(v):'';};
+ const opts=s.concepts.filter(x=>!['APORTE_CAPITAL','PRESTAMO'].includes(x.nature)||(c&&c.id===x.id));
+ const d=document.createElement('dialog');d.className='oc-dialog';d.dataset.cnDialog='';
+ d.innerHTML=`<form><h2>Editar movimiento</h2>${own?'<p><small>Ingresado a mano o por atajo: puedes corregir todos los datos.</small></p>':`<p><small>Viene de ${esc(m.account)}: cuenta, fecha, monto y descripción son del banco y no se cambian.</small></p><p><b>${esc(m.account)} · ${esc(fmtDate(m.date))} · ${money(m.amount)}</b><br>${esc(m.description)}</p>`}<div class="oc-caja-form">
+  ${own?`<label>Fecha<input name="date" type="date" required value="${esc(m.date||'')}"></label>
+  <label>Monto<input name="amount" type="number" min="1" step="1" required value="${esc(m.amount??'')}"></label>
+  <label>Cuenta<select name="accountId">${acc.map(a=>`<option value="${esc(a.id)}"${a.id===m.accountId?' selected':''}>${esc(a.name)}</option>`).join('')}</select></label>
+  <label>Descripción<input name="description" maxlength="200" required value="${esc(m.description||'')}"></label>`:''}
+  <label>Ingreso o egreso<select name="direction"><option value="">Elegir…</option><option value="${SAL}"${m.direction===SAL?' selected':''}>Egreso</option><option value="${ENT}"${m.direction===ENT?' selected':''}>Ingreso</option></select></label>
+  <label>Concepto<select name="conceptId"><option value="">Por asignar</option>${opts.map(x=>`<option value="${esc(x.id)}"${c&&c.id===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
+  <label>Auto (si es de auto)<input name="car" list="cn-cars" placeholder="Patente, marca o modelo" value="${esc(c&&c.vehicleId?carOf(c.vehicleId):'')}"></label>
+ </div><p role="status"></p><button type="submit">Guardar</button> <button type="button" id="cn-cancel">Cancelar</button></form>`;
+ document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();d.querySelector('#cn-cancel').onclick=()=>d.close();
+ d.querySelector('form').onsubmit=async e=>{
+  e.preventDefault();const st=d.querySelector('[role=status]'),f=Object.fromEntries(new FormData(e.target)),btn=d.querySelector('[type=submit]');
+  if(!f.direction){st.textContent='Indica si fue ingreso o egreso.';return;}
+  const carTxt=String(f.car||'').trim(),v=carTxt?carIndex().get(carTxt):null;
+  if(carTxt&&!v){st.textContent='Elige un auto de la lista (patente, marca o modelo).';return;}
+  btn.disabled=true;st.textContent='Guardando…';
+  try{const next=await config.editMovement(m,{date:f.date,amount:f.amount===undefined?undefined:Number(f.amount),accountId:f.accountId,description:f.description,direction:f.direction,conceptId:f.conceptId,vehicleId:v?String(v.id):''});
+   if(next)replace(next);d.close();s.message='Movimiento corregido.';draw(el);if(mode==='nueva'&&own){matched=false;autoMatch(el);}}
+  catch(err){st.textContent=err.message;btn.disabled=false;}
+ };
 }
 function quickDialog(el,m){
  const c=m.classification,acc=accountsInfo(),carOf=id=>{const v=s.inventory.find(x=>String(x.id)===String(id));return v?carLabel(v):'';};

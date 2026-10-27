@@ -45,11 +45,18 @@ function draw(el){
   <div class="oc-table-scroll"><table class="lq-table"><thead><tr><th>Fecha</th><th>Cuenta</th><th>Descripción</th><th>Monto</th><th>Socio</th></tr></thead><tbody>
   ${bad.map(m=>{const pick=s.picks[m.id]??suggest(m,list);return `<tr><td>${esc(fmtDate(m.date))}</td><td>${esc(m.account)}</td><td>${esc(m.description)}${m.socio?` <small>(«${esc(m.socio)}»)</small>`:''}</td><td>${money(m.amount)}</td><td><select data-cf-pick="${esc(m.id)}"><option value="">Elegir…</option>${list.filter(x=>x.habilitado!=='NO').map(x=>`<option${x.nombre===pick?' selected':''}>${esc(x.nombre)}</option>`).join('')}</select></td></tr>`;}).join('')}
   </tbody></table></div><p><button id="cf-apply"${s.busy?' disabled':''}>Guardar socios elegidos</button></p></section>`:''}
+ ${parkingCard()}
  <section class="oc-card"><h2>Conceptos de caja</h2><p>Los conceptos con que se clasifican los movimientos en Caja y bancos y Caja histórica.</p>
   <div class="oc-table-scroll"><table class="lq-table"><thead><tr><th>Concepto</th><th>Categoría</th><th>Qué es</th><th>Costo</th><th>Auto</th><th></th></tr></thead><tbody>
   ${concepts().map(c=>`<tr><td><b>${esc(c.name)}</b>${c.recurring?' <small>· recurrente</small>':''}</td><td>${esc(c.category)}</td><td>${esc(NAT[c.nature]||c.nature)}</td><td>${esc(c.cost==='NO_APLICA'?'—':c.cost==='FIJO'?'Fijo':'Variable')}</td><td>${esc(c.vehicleOperation||'—')}</td><td>${config.canManage?`<button data-cf-concept="${esc(c.id)}">Editar</button>`:''}</td></tr>`).join('')}
   </tbody></table></div>${config.canManage?`<p><button id="cf-concept-new">Crear concepto</button></p>`:'<p><small>Solo Gerencia o Administración edita conceptos.</small></p>'}</section>`;
  wire(el);
+}
+// Costo de estacionamiento: sobre N días de inventario, cada día extra suma el valor por día al costo del auto.
+function parkingCard(){
+ const st=config.store?.settings?config.store.settings():{},days=st.parkingDays??30,rate=st.parkingRate??1;
+ return `<section class="oc-card"><h2>Costo de estacionamiento</h2><p>Cada auto con más de <b>${esc(days)}</b> días en inventario suma <b>${money(Number(rate))}</b> por día extra a su costo (stock al costo y margen).</p>
+  ${config.canManage?`<form id="cf-park" class="oc-caja-form"><label>Días sin costo<input name="parkingDays" type="number" min="0" step="1" required value="${esc(days)}"></label><label>Valor por día extra (CLP)<input name="parkingRate" type="number" min="0" step="1" required value="${esc(rate)}"></label><p><button type="submit"${s.busy?' disabled':''}>Guardar</button></p></form>`:''}</section>`;
 }
 function dialog(html){const d=document.createElement('dialog');d.className='oc-dialog';d.dataset.cfDialog='';d.innerHTML=html;document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();const c=d.querySelector('[data-cf-cancel]');if(c)c.onclick=()=>d.close();return d;}
 function socioDialog(el,x){
@@ -92,6 +99,9 @@ function wire(el){
  el.querySelectorAll('[data-cf-socio]').forEach(b=>b.onclick=()=>socioDialog(el,(cache||[]).find(x=>x.socio_id===b.dataset.cfSocio)));
  el.querySelectorAll('[data-cf-pick]').forEach(x=>x.onchange=()=>{s.picks[x.dataset.cfPick]=x.value;});
  const ap=el.querySelector('#cf-apply');if(ap)ap.onclick=()=>applyPicks(el);
+ const pk=el.querySelector('#cf-park');if(pk)pk.onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(pk));s.busy=true;s.message='Guardando…';draw(el);
+  try{const r=await config.call('saveSettings',{parkingDays:Number(f.parkingDays),parkingRate:Number(f.parkingRate)});config.store?.setSettings(r);s.message='Costo de estacionamiento guardado: se aplica a todos los autos.';}catch(err){s.message=err.message;}
+  s.busy=false;draw(el);};
  const nc=el.querySelector('#cf-concept-new');if(nc)nc.onclick=()=>conceptDialog(el,null);
  el.querySelectorAll('[data-cf-concept]').forEach(b=>b.onclick=()=>conceptDialog(el,concepts().find(c=>c.id===b.dataset.cfConcept)));
 }

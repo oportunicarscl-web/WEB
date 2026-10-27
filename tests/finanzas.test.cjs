@@ -53,7 +53,7 @@ test('Modelo de flota: con historia produce óptimo dentro de la capacidad',()=>
  const d=base();d.companyStart='2026-05-01';d.operations=[];d.inventory=[];let n=0;
  [['2026-05-20',1],['2026-06-15',2],['2026-07-10',2],['2026-08-12',2],['2026-09-18',3],['2026-10-08',2]].forEach(([day,q])=>{for(let i=0;i<q;i++){n++;d.inventory.push({vehiculo_id:'v'+n});d.operations.push({vehiculo_id:'v'+n,modalidad:'PROPIO',fecha_ingreso:new Date(Date.parse(day)-45*864e5).toISOString().slice(0,10),estado_auto:'VENDIDO',costo_compra:600,fecha_venta:day,precio_venta:720});}});
  for(let i=0;i<4;i++){d.inventory.push({vehiculo_id:'s'+i});d.operations.push({vehiculo_id:'s'+i,modalidad:'PROPIO',fecha_ingreso:'2026-09-20',estado_auto:'DISPONIBLE',costo_compra:600});}
- d.accounts=[{cuenta_id:'a',nombre:'B',saldo_inicial:5000,fecha_saldo_inicial:'2026-04-30'}];
+ d.accounts=[{cuenta_id:'a',nombre:'B',saldo_inicial:5000,fecha_saldo_inicial:'2026-04-30'}];d.settings={parkingDays:30,parkingRate:0};
  const f=F.fleetModel(d,core.reports(d,'2026-10-19'),'2026-10-19',{capacity:12,costOfCapital:0.01});
  assert.equal(f.ready,true);assert.equal(f.margin,120);assert.equal(f.currentN,4);assert.ok(f.beta>=0.3&&f.beta<=1);assert.ok(f.optimal.n>=1&&f.optimal.n<=12);
  assert.equal(f.curve.length,13);assert.equal(f.profitNow,f.curve[4].profit);assert.ok(f.curve.every(p=>p.profit<=f.optimal.profit));

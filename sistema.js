@@ -17,7 +17,8 @@ const defs={
 function setup(o={}){options=o;message='';}
 const table=(headers,rows)=>'<div class="oc-table-scroll"><table><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
 const title=v=>String(v||'').replaceAll('_',' ').toLowerCase();
-const car=id=>{const v=(S().inventory||[]).find(x=>String(x.vehiculo_id)===String(id));return v?[v.vehiculo_id,v.patente,v.marca,v.modelo].filter(Boolean).join(' · '):id;};
+// Nombre del auto: patente · marca · modelo (el id interno solo si no hay patente).
+const car=id=>{const v=(S().inventory||[]).find(x=>String(x.vehiculo_id)===String(id));return v?[v.patente||v.vehiculo_id,v.marca,v.modelo].filter(Boolean).join(' · '):id;};
 const button=(tab,text)=>'<button data-system-new="'+tab+'">'+text+'</button>';
 const edit=(tab,id)=>'<button data-system-edit="'+tab+'" data-record="'+esc(id)+'">Editar</button>';
 // Verde si es cero; el número en rojo si falta.
@@ -35,13 +36,14 @@ const fold=(label,total,ls,extra)=>'<details class="oc-fold"><summary><span>'+la
 // Resumen del auto con lo que ya está asignado en Caja y bancos; cada línea se abre para ver el detalle.
 function finPanel(id){
  const c=carFin(id);if(!id||!c)return '<p>Elige un auto para ver lo asignado en Caja y bancos.</p>';
- const cons=c.modality==='CONSIGNADO',ls=c.lines||[],res=c.sale!==null&&c.purchase!==null?c.sale-c.purchase-c.preparation:null;
+ const cons=c.modality==='CONSIGNADO',ls=c.lines||[],res=c.sale!==null&&c.purchase!==null?c.sale-c.purchase-c.preparation-(c.parking||0):null;
  const buy=ls.filter(l=>l.op==='COMPRA'&&l.dir==='SALIDA'),sale=ls.filter(l=>l.op==='VENTA'&&l.dir==='ENTRADA'),costs=ls.filter(l=>l.dir==='SALIDA'&&l.op!=='COMPRA'&&l.op!=='VENTA');
  const groups={};costs.forEach(l=>{(groups[l.concept||'Sin concepto']=groups[l.concept||'Sin concepto']||[]).push(l);});
  const costBody=Object.keys(groups).sort((a,b)=>groups[b].reduce((s,l)=>s+l.amount,0)-groups[a].reduce((s,l)=>s+l.amount,0)).map(k=>fold(esc(k),money(groups[k].reduce((s,l)=>s+l.amount,0)),groups[k])).join('');
  return '<div class="oc-fin">'+
   fold(cons?'Pago al dueño (concepto Compra)':'Compra',c.purchase===null?'<span class="oc-bad">Falta asignar</span>':money(c.purchase),buy)+
   '<details class="oc-fold"><summary><span>Arreglos y costos del auto</span><b>'+money(c.preparation)+'</b></summary>'+(costBody||'<p class="oc-bad">Todavía no hay costos asignados.</p>')+'</details>'+
+  (c.parking?'<div class="oc-fold-total"><span>Estacionamiento ('+(c.days-c.parkingFree)+' días sobre '+c.parkingFree+' × '+money(c.parkingRate)+')</span><b>'+money(c.parking)+'</b></div>':'')+
   fold('Venta cobrada',c.income>0?money(c.income):'<span class="oc-bad">Falta asignar</span>',sale)+
   '<div class="oc-fold-total"><span>'+(cons?'Margen (comisión)':'Margen')+'</span><b'+tone(res)+'>'+(res===null?'—':money(res)+' · '+pct(c.sale>0?res/c.sale*100:null))+'</b></div></div>'+
   '<small>Fecha de ingreso: '+esc(c.entryDate?fmtDay(c.entryDate)+(c.entryInferred?' (primera compra)':''):'sin dato')+' · Día de venta: '+esc(c.saleDateCaja?fmtDay(c.saleDateCaja)+' (último cobro)':'sin cobro')+' · Días en inventario: '+esc(c.days??'—')+'.</small><br><small>Todo viene de la caja asignada a este auto. Para cambiarlo, edita el movimiento en Caja y bancos.</small>';
@@ -107,12 +109,12 @@ function cashTotal(){
  const rows=root.OCCajaNueva&&root.OCCajaNueva.accountBalances?root.OCCajaNueva.accountBalances():[],known=rows.filter(a=>Number.isFinite(a.value));
  return known.length?known.reduce((t,a)=>t+a.value,0):null;
 }
-const stockAtCost=cars=>cars.filter(c=>c.modality==='PROPIO'&&!c.sold&&c.status!=='RETIRADO').reduce((t,c)=>t+(c.purchase||0)+(c.preparation||0),0);
+const stockAtCost=cars=>cars.filter(c=>c.modality==='PROPIO'&&!c.sold&&c.status!=='RETIRADO').reduce((t,c)=>t+(c.purchase||0)+(c.preparation||0)+(c.parking||0),0);
 // ¿Si cerramos hoy y vendemos todo, recuperamos lo que pusieron los socios?
 // Lo recuperable = caja + stock propio (al costo o a precio publicado) + por cobrar + préstamos otorgados − deudas.
 function capitalCard(r,cars,cash,stock){
  const cap=r.capital||{total:0,rows:[],count:0},stockCars=cars.filter(c=>c.modality==='PROPIO'&&!c.sold&&c.status!=='RETIRADO');
- const listed=stockCars.reduce((t,c)=>t+(Number.isFinite(c.listPrice)&&c.listPrice>0?c.listPrice:(c.purchase||0)+(c.preparation||0)),0);
+ const listed=stockCars.reduce((t,c)=>t+(Number.isFinite(c.listPrice)&&c.listPrice>0?c.listPrice:(c.purchase||0)+(c.preparation||0)+(c.parking||0)),0);
  const rest=(r.receivable||0)+(r.loanAsset||0)-(r.debt||0),atCost=(cash||0)+stock+rest,atList=(cash||0)+listed+rest;
  if(!cap.total)return '<section class="oc-card os-capital"><h2>Capital de los socios</h2><p>Todavía no hay aportes en la caja. Cuando registres los aportes de los socios en Caja histórica (concepto de aporte de capital) aquí verás cuánto se recuperaría si hoy se cierra y se vende todo.</p></section>';
  const max=Math.max(cap.total,atList,atCost,1),w=v=>Math.max(0,Math.min(100,v/max*100)),line=w(cap.total);
@@ -148,7 +150,7 @@ function carFilters(cars){
 }
 function opsTable(cars){
  const rows=cars.slice().sort((a,b)=>(b.income>0)-(a.income>0)||(b.purchase!==null)-(a.purchase!==null)||b.preparation-a.preparation).map(c=>{
-  const cons=c.modality==='CONSIGNADO',cells=[esc(car(c.id)),esc(title(c.status))+(!c.hasFicha?'<br>'+chip('Falta ficha','bad'):'')+(c.salePending?'<br>'+chip('Vendido por caja: cerrar ficha','warn'):'')+(c.unconfirmed?'<br><small>'+c.unconfirmed+' importe(s) por confirmar</small>':''),esc(c.days??'—'),(c.purchase===null?(c.sold?'<b class="oc-bad">Falta</b>':'—'):money(c.purchase))+(cons&&c.purchase!==null?'<br><small>pago al dueño</small>':''),c.preparation?money(c.preparation):'—',c.income>0?money(c.income):'—','<b'+tone(c.result)+'>'+(c.result===null?'—':money(c.result))+'</b>',pct(c.margin),(c.salePending?'<button data-os-sell="'+esc(c.id)+'">Marcar vendido</button> ':'')+'<button data-system-edit="AUTOS_OPERACION" data-record="'+esc(c.id)+'">Ficha</button>'];
+  const cons=c.modality==='CONSIGNADO',cells=[esc(car(c.id)),esc(title(c.status))+(!c.hasFicha?'<br>'+chip('Falta ficha','bad'):'')+(c.salePending?'<br>'+chip('Vendido por caja: cerrar ficha','warn'):'')+(c.unconfirmed?'<br><small>'+c.unconfirmed+' importe(s) por confirmar</small>':''),esc(c.days??'—'),(c.purchase===null?(c.sold?'<b class="oc-bad">Falta</b>':'—'):money(c.purchase))+(cons&&c.purchase!==null?'<br><small>pago al dueño</small>':''),(c.preparation||c.parking)?money(c.preparation+(c.parking||0))+(c.parking?'<br><small>incl. estac. '+money(c.parking)+'</small>':''):'—',c.income>0?money(c.income):'—','<b'+tone(c.result)+'>'+(c.result===null?'—':money(c.result))+'</b>',pct(c.margin),(c.salePending?'<button data-os-sell="'+esc(c.id)+'">Marcar vendido</button> ':'')+'<button data-system-edit="AUTOS_OPERACION" data-record="'+esc(c.id)+'">Ficha</button>'];
   return '<tr data-group="'+carGroup(c)+'" data-text="'+esc(car(c.id).toLowerCase())+'"'+(carTab!=='todos'&&carGroup(c)!==carTab?' hidden':'')+'>'+cells.map(x=>'<td>'+x+'</td>').join('')+'</tr>';
  }).join('');
  return '<div class="oc-table-scroll"><table id="os-cars"><thead><tr>'+['Auto','Estado','Días','Compra','Costos','Venta cobrada','Margen','%',''].map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
@@ -159,7 +161,7 @@ function filterCars(){
  host.querySelectorAll('[data-car-tab]').forEach(b=>b.classList.toggle('active',b.dataset.carTab===carTab));
 }
 function operations(st,cars){
- return '<section class="oc-card"><h2>Autos y operación</h2><p>Registra el auto, completa su ficha y márcalo vendido. El margen sale de la caja asignada al auto: compra (o pago al dueño en consignados), arreglos y costos, y venta cobrada. Lavados, arreglos, fotos y otros costos se asignan al auto desde Caja y bancos: no hace falta crear una actividad.</p><div class="oc-system-actions">'+button('VEHICULOS','Registrar auto')+button('AUTOS_OPERACION','Completar ficha')+'<button id="os-sell">Vender auto</button>'+(options.canManage?'<button id="os-sync">Actualizar stock de Claxo</button>':'')+'</div><p>Última sincronización: '+esc(st.sync?new Date(st.sync).toLocaleString('es-CL',{timeZone:'America/Santiago'}):'Pendiente')+'</p>'+
+ return '<section class="oc-card"><h2>Autos y operación</h2><p>Registra el auto, completa su ficha y márcalo vendido. El margen sale de la caja asignada al auto: compra (o pago al dueño en consignados), arreglos y costos, y venta cobrada. Lavados, arreglos, fotos y otros costos se asignan al auto desde Caja y bancos: no hace falta crear una actividad.</p><div class="oc-system-actions">'+button('VEHICULOS','Registrar auto')+button('AUTOS_OPERACION','Completar ficha')+'<button id="os-sell">Vender auto</button>'+(options.canManage||options.canClaxo?'<button id="os-sync">Actualizar stock de Claxo</button>':'')+'</div><p>Última sincronización: '+esc(st.sync?new Date(st.sync).toLocaleString('es-CL',{timeZone:'America/Santiago'}):'Pendiente')+'</p>'+
  carFilters(cars)+opsTable(cars)+'</section>';
 }
 

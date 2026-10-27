@@ -19,7 +19,7 @@ function doPost(e) {
       if(p.action==='saveCompanyStart'){if(!current.manage||!osDate_(p.date))throw Error('Fecha o permiso inválido.');PropertiesService.getScriptProperties().setProperty('OC_FECHA_CREACION',p.date);return ocJson_({ok:true});}
       if(p.action==='saveBalance')return ocJson_({ok:true,data:osAccountSave_(p,current)});
       if(p.action==='import')return ocJson_({ok:true,data:osImport_(p,current)});
-      if(p.action==='syncClaxo'){if(!current.manage)throw Error('Acceso restringido.');return ocJson_({ok:true,data:osClaxo_()});}
+      if(p.action==='syncClaxo'){if(!current.manage&&!(typeof ocIsJT_==='function'&&ocIsJT_(current)))throw Error('Acceso restringido.');return ocJson_({ok:true,data:osClaxo_()});}
       if(p.action==='classify')return ocJson_({ok:true,data:ocClassify_(p,current)});
       if(p.action==='concept')return ocJson_({ok:true,data:ocSaveConcept_(p,current)});
       throw Error('Acción desconocida.');
@@ -41,7 +41,8 @@ function ocActor_(token){
   const base=ocProperty_('OC_SUPABASE_URL');if(!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(base))throw Error('Configuración de identidad inválida.');
   const result=UrlFetchApp.fetch(base+'/auth/v1/user',{headers:{apikey:ocProperty_('OC_SUPABASE_KEY'),Authorization:'Bearer '+token},muteHttpExceptions:true});
   if(result.getResponseCode()!==200)throw Error('Sesión inválida o vencida.');
-  const u=JSON.parse(result.getContentText()),matches=ocTable_('OC_MAESTROS_ID','USUARIOS').rows.filter(r=>r.auth_user_id===u.id);
+  const u=JSON.parse(result.getContentText());if(typeof ocSessionGuard_==='function')ocSessionGuard_(u,token);
+  const matches=ocTable_('OC_MAESTROS_ID','USUARIOS').rows.filter(r=>r.auth_user_id===u.id);
   if(matches.length!==1)throw Error('Tu usuario no está configurado correctamente en Google.');
   const row=matches[0],roles={OPERACIONES:'operativo',SOCIO:'gerencial',ADMINISTRADOR:'administrador',FINANZAS:'finanzas'};
   if(!ocProd_(row)||row.estado_registro!=='ACTIVO'||row.habilitado!=='SI'||!Object.prototype.hasOwnProperty.call(roles,row.rol)||String(row.email).trim().toLowerCase()!==String(u.email||'').toLowerCase())throw Error('Tu usuario no está habilitado en Google.');

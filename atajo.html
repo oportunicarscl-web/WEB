@@ -91,9 +91,11 @@ const order=()=>[...(form.tile&&form.conceptSet?[]:['direction','concept']),...(
 const answered=k=>({direction:!!form.direction,concept:form.conceptSet,car:form.vehicleSet,amount:Number(form.amount)>0,account:!!form.accountId,review:false}[k]);
 function save(){try{localStorage.setItem('oc-atajo-data',JSON.stringify(data));}catch{}}
 async function call(action,payload={}){
- const {data:s}=await client.auth.getSession();if(!s.session||!stamp()||expired()){if(s.session)await client.auth.signOut();throw Error('SIN_SESION');}token=s.session.access_token;
+ const {data:s}=await client.auth.getSession();if(!s.session||!stamp()||expired()){if(s.session)await client.auth.signOut({scope:'local'});throw Error('SIN_SESION');}token=s.session.access_token;
  const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action,token}),credentials:'omit',redirect:'follow',referrerPolicy:'no-referrer'});
- const j=await r.json();if(!j.ok)throw Error(j.error||'No se pudo guardar.');return j.data;
+ const j=await r.json();
+ if(!j.ok&&/^SESION_CERRADA|@oportunicars\.cl/.test(String(j.error||''))){await client.auth.signOut({scope:'local'});try{localStorage.removeItem(STAMP);}catch{}throw Error('SIN_SESION');}
+ if(!j.ok)throw Error(j.error||'No se pudo guardar.');return j.data;
 }
 const amountOk=()=>Number(form.amount)>0&&(!form.askNote||!!form.note.trim());
 function go(k){step=k;msg='';render();}
@@ -117,7 +119,7 @@ function render(){
  if(step==='home'){
   app.innerHTML=`<header><div><p class="brand">OPORTUNICARS · CAJA</p><h1>Registrar movimiento</h1></div></header><div class="tiles">${TILES.map((t,i)=>`<button class="tile" data-t="${i}"><span>${t.icon}</span>${esc(t.label)}</button>`).join('')}</div><div class="card"><p style="margin:0 0 12px">¿Entró o salió dinero?</p><div class="big"><button class="opt in" data-d="ENTRADA">⬇ Entró</button><button class="opt out" data-d="SALIDA">⬆ Salió</button></div></div><p class="foot"><button class="link" id="out">Cerrar sesión</button></p>`;
   app.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>pickTile(TILES[b.dataset.t]));
-  $('out').onclick=async()=>{await client.auth.signOut();try{localStorage.removeItem(STAMP);}catch{}location.reload();};
+  $('out').onclick=async()=>{await client.auth.signOut({scope:'local'});try{localStorage.removeItem(STAMP);}catch{}location.reload();};
   app.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{form=blank();form.date=data.today;form.direction=b.dataset.d;step='concept';render();});
   return;
  }
@@ -167,7 +169,7 @@ async function submit(){
 }
 function loginView(err=''){
  app.innerHTML=`<div class="card"><h2>Inicia sesión</h2><p><small class="m">Solo la primera vez en este teléfono; después queda abierta hasta 60 días.</small></p><form id="lf" style="display:grid;gap:10px"><input type="text" id="em" inputmode="email" autocomplete="username" autocapitalize="none" placeholder="Correo"><input type="password" id="pw" autocomplete="current-password" placeholder="Contraseña" style="width:100%;font:inherit;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)"><button class="opt sel" type="submit">Entrar</button></form><p class="msg">${esc(err)}</p></div>`;
- $('lf').onsubmit=async e=>{e.preventDefault();const {error}=await client.auth.signInWithPassword({email:$('em').value.trim(),password:$('pw').value});if(error)return loginView('Correo o contraseña incorrectos.');try{localStorage.setItem(STAMP,String(Date.now()));}catch{}location.reload();};
+ $('lf').onsubmit=async e=>{e.preventDefault();if(!/@oportunicars\.cl$/i.test($('em').value.trim()))return loginView('Solo se permiten cuentas @oportunicars.cl.');const {error}=await client.auth.signInWithPassword({email:$('em').value.trim(),password:$('pw').value});if(error)return loginView('Correo o contraseña incorrectos.');try{localStorage.setItem(STAMP,String(Date.now()));}catch{}location.reload();};
 }
 (async()=>{
  try{const c=JSON.parse(localStorage.getItem('oc-atajo-data'));if(c&&c.concepts){data=c;reset();}}catch{}

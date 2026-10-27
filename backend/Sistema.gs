@@ -38,6 +38,7 @@ function osLoad_(actor){
   movements:prod('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS').map(r=>osSlim_(r,OC_MOV_FIELDS)),
   companyStart:PropertiesService.getScriptProperties().getProperty('OC_FECHA_CREACION')||'',
   sync:PropertiesService.getScriptProperties().getProperty('OC_CLAXO_LAST_SYNC')||null,
+  settings:typeof ocSettings_==='function'?ocSettings_():{},
   today:Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd')
  };
 }

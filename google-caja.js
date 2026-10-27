@@ -34,7 +34,7 @@
  }
 
  function createStore(call,loaded){
-  const D={strictFrom:CASH_START,inventory:loaded.inventory,operations:latestPerCar(loaded.operations||[]),activities:loaded.activities,movements:loaded.movements.filter(effective),hidden:loaded.movements.filter(r=>!effective(r)).length,accounts:loaded.accounts,forecasts:loaded.forecasts,loans:loaded.loans,contributions:loaded.contributions||[],companyStart:loaded.companyStart||'',sync:loaded.sync||null,canFinance:true};
+  const D={strictFrom:CASH_START,inventory:loaded.inventory,operations:latestPerCar(loaded.operations||[]),activities:loaded.activities,movements:loaded.movements.filter(effective),hidden:loaded.movements.filter(r=>!effective(r)).length,accounts:loaded.accounts,forecasts:loaded.forecasts,loans:loaded.loans,contributions:loaded.contributions||[],settings:loaded.settings||{},companyStart:loaded.companyStart||'',sync:loaded.sync||null,canFinance:true};
   let cache=null;const invalidate=()=>{cache=null;};
   const accountNames=()=>Object.fromEntries(D.accounts.map(a=>[a.cuenta_id,a.nombre]));
   function state(){
@@ -49,6 +49,7 @@
    state,today,
    movementsForCaja(){const names=accountNames();return D.movements.filter(r=>r.estado_registro!=='ANULADO').map(r=>mapMovement(r,names));},
    hiddenCount(){return D.hidden;},
+   settings(){return D.settings||{};},setSettings(x){D.settings=x||{};invalidate();},
    replaceMovements(l){D.movements=l.movements.filter(effective);D.hidden=l.movements.filter(r=>!effective(r)).length;D.accounts=l.accounts;invalidate();return this.movementsForCaja();},
    accountsInfo(){return D.accounts.filter(a=>a.estado_registro!=='ANULADO').map(a=>({id:String(a.cuenta_id),name:String(a.nombre),opening:a.saldo_inicial===''||a.saldo_inicial===undefined?null:Number(a.saldo_inicial),cut:parseDay(a.fecha_saldo_inicial),version:Number(a.version||1)}));},
    mapped(id){const raw=D.movements.find(r=>String(r.movimiento_id)===id);return raw?mapMovement(raw,accountNames()):null;},
@@ -84,7 +85,10 @@
    try{
     const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action,token:data.session.access_token}),credentials:'omit',redirect:'follow',referrerPolicy:'no-referrer',signal:control.signal});
     if(!response.ok)throw Error('Google no respondió correctamente.');
-    const result=await response.json();if(!result.ok)throw Error(result.error||'No se pudo guardar.');return result.data;
+    const result=await response.json();
+    // Sesión expulsada por superar 3 sesiones en paralelo (o correo no permitido): se cierra solo en este navegador.
+    if(!result.ok&&/^SESION_CERRADA|@oportunicars\.cl/.test(String(result.error||''))){try{await client.auth.signOut({scope:'local'});}catch{}alert(String(result.error).replace(/^SESION_CERRADA:\s*/,''));location.reload();}
+    if(!result.ok)throw Error(result.error||'No se pudo guardar.');return result.data;
    }catch(e){if(e.name==='AbortError')throw Error('Google demoró en responder. Recarga para comprobar si se guardó.');throw e;}
    finally{clearTimeout(timer);}
   }
@@ -107,6 +111,8 @@
    async reloadMovements(){const l=await call('load');return store.replaceMovements(l);},
    async quickEdit(m,f){const raw=await call('quickEdit',{id:m.id,expectedVersion:m.version,...f});store.patchRaw(m.id,raw);return store.mapped(m.id);},
    async quickVoid(m){await call('quickVoid',{id:m.id,expectedVersion:m.version});store.patchRaw(m.id,{estado_registro:'ANULADO'});return true;},
+   async editMovement(m,fields){const raw=await call('movEdit',{id:m.id,expectedVersion:m.version,fields});store.patchRaw(m.id,raw);return store.mapped(m.id);},
+   async voidMovement(m){await call('movVoid',{id:m.id,expectedVersion:m.version});store.patchRaw(m.id,{estado_registro:'ANULADO'});return true;},
    async manualVoid(id){await call('manualVoid',{id});store.patchRaw(id,{estado_registro:'ANULADO'});return true;},
    async quickMatch(q,x){const r=await call('quickMatch',{quickId:q.id,targetId:x.id,expectedVersion:x.version});store.patchRaw(q.id,{estado_registro:'ANULADO'});store.patchRaw(x.id,r.target);return r.target;},
    applyLocal:store.applyLocal

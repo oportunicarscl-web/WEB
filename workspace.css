@@ -219,3 +219,38 @@ body.workspace-open{
 .lq-link{background:none;border:0;padding:0;color:#7a5a2c;text-decoration:underline;cursor:pointer;font:inherit}.lq-empty{opacity:.6}
 #oc-liq .cn-ok,.lq-alloc .cn-ok{color:#2f6b3b}#oc-liq .cn-bad,.lq-alloc .cn-bad{color:#a23b2a}#oc-liq .cn-warn,.lq-alloc .cn-warn{color:#9a6a12}
 #oc-liq h3{margin-top:18px}
+/* ---- Títulos pegados: al deslizar una lista o tabla, el encabezado queda visible ---- */
+#oc-workspace .oc-table-scroll thead th,.oc-dialog .oc-table-scroll thead th,.lq-table thead th{position:sticky;top:0;z-index:3;background:#f2e8d8;box-shadow:0 1px 0 #d9c8ac}
+#oc-workspace #oc-caja-nueva>.oc-tabs,#oc-workspace #oc-liq>.oc-tabs:not(.lq-obligs){position:sticky;top:0;z-index:6;background:#fffdf8;padding:8px 0;margin-top:0}
+/* ---- Ficha siempre visible: la columna de acciones queda pegada a la derecha ---- */
+#oc-workspace #os-cars td:last-child,#oc-workspace #os-cars th:last-child{position:sticky;right:0;background:#fffdf8;box-shadow:-1px 0 0 #d9c8ac;z-index:2}
+#oc-workspace #os-cars thead th:last-child{background:#f2e8d8;z-index:4}
+#oc-workspace #os-cars td:last-child{white-space:nowrap}
+/* ---- Selección múltiple en la caja ---- */
+#oc-workspace .cn-pick{display:inline-flex;align-items:center;margin-right:10px;vertical-align:middle}
+#oc-workspace .cn-pick input{width:18px;height:18px;accent-color:#7a5a2c;cursor:pointer}
+#oc-workspace .cn-pick input:disabled{cursor:not-allowed;opacity:.35}
+#oc-workspace .cn-picked{background:#fbf3e3}
+#oc-workspace .cn-bulk{position:sticky;top:56px;z-index:6;display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 14px;margin:8px 0;border:1px solid #b4935f;border-radius:10px;background:#fff7e8;box-shadow:0 4px 14px #3b2f2122}
+#oc-workspace .cn-bulk select,#oc-workspace .cn-bulk input{padding:8px;border:1px solid #b4935f;background:#fffaf2;font:inherit;max-width:100%}
+#oc-workspace .cn-bulk-hint{margin:6px 0;opacity:.8}
+#oc-workspace .cn-flip{flex-wrap:wrap}
+/* ---- Pantallas más cuadradas (≤ 1280 px de ancho): menú más angosto, tablas compactas ---- */
+@media(max-width:1280px) and (min-width:701px){
+ #oc-workspace{grid-template-columns:196px 1fr}
+ .oc-sidebar{padding:22px 12px}
+ .oc-main{padding:22px 22px 20px}
+ #oc-workspace th,#oc-workspace td{padding:8px 9px}
+ #oc-workspace table{font-size:11.5px}
+ .oc-card{padding:18px}
+ #oc-workspace .oc-caja-row{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px}
+}
+@media(max-width:1000px) and (min-width:701px){
+ #oc-workspace{grid-template-columns:172px 1fr}
+ #oc-workspace .oc-caja-row{grid-template-columns:1fr}
+ .oc-columns,.oc-dashboard-grid{grid-template-columns:1fr!important}
+}
+/* Altura corta (pantallas 4:3 o ventanas bajas): diálogos y tablas usan el alto disponible */
+@media(max-height:820px){.oc-table-scroll{max-height:58vh}#oc-workspace h1{font-size:34px}.oc-header{margin-bottom:10px}}
+.oc-dialog{width:min(900px,94vw);max-height:90vh;overflow:auto}
+@media(max-width:700px){#oc-workspace .cn-bulk{top:0}}

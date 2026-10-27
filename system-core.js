@@ -17,6 +17,8 @@ function reports(d,today){
   const opening=n(a.saldo_inicial),cut=date(a.fecha_saldo_inicial),rows=confirmed.filter(m=>m.cuenta_id===a.cuenta_id&&date(m.fecha_operacion)&&cut&&m.fecha_operacion>cut&&m.fecha_operacion<=today&&complete(m,d.strictFrom));
   return {id:a.cuenta_id,name:a.nombre,balance:opening===null||!cut?null:opening+rows.reduce((s,m)=>s+(m.direccion==='ENTRADA'?1:-1)*Number(m.monto),0)};
  });
+ // Estacionamiento: sobre N días de inventario se suma (días − N) × valor por día (Configuración).
+ const pset=d.settings||{},pDays=Number.isFinite(Number(pset.parkingDays))&&pset.parkingDays!==''&&pset.parkingDays!==null?Number(pset.parkingDays):30,pRate=Number.isFinite(Number(pset.parkingRate))&&pset.parkingRate!==''&&pset.parkingRate!==null?Number(pset.parkingRate):1;
  const cars=d.inventory.filter(active).map(sid).map(v=>{
   const o=ops.find(x=>x.vehiculo_id===v.vehiculo_id)||{},ms=counted.filter(m=>m.vehiculo_id===v.vehiculo_id),as=activities.filter(a=>a.vehiculo_id===v.vehiculo_id);
   // Todo sale de la caja asignada al auto: compra (o pago al dueño en consignados), costos y cobros de venta.
@@ -25,19 +27,20 @@ function reports(d,today){
   const saleMoves=ms.filter(m=>m.operacion_auto==='VENTA'&&m.direccion==='ENTRADA'),income=saleMoves.reduce((s,m)=>s+Number(m.monto),0);
   const saleDateCaja=saleMoves.map(m=>m.fecha_operacion).sort().pop()||'';
   const soldFicha=o.estado_auto==='VENDIDO',sold=soldFicha||(income>0&&o.estado_auto!=='RETIRADO'),sale=income>0?income:n(o.precio_venta),own=o.modalidad==='PROPIO';
-  const cost=own&&purchase!==null?purchase+preparation:null;
   // Día de venta = último día que entró dinero por la venta (caja). Ingreso = ficha o, si falta, la primera compra asignada.
   const saleDate=saleDateCaja||(date(o.fecha_venta)?o.fecha_venta:'');
   const firstPurchase=purchases.map(m=>m.fecha_operacion).filter(date).sort()[0]||'';
   const entryDate=date(o.fecha_ingreso)?o.fecha_ingreso:firstPurchase,entryInferred=!date(o.fecha_ingreso)&&!!firstPurchase;
   const end=sold&&date(saleDate)?saleDate:today;
   const days=date(entryDate)?Math.max(0,Math.floor((Date.parse(end)-Date.parse(entryDate))/86400000)):null;
+  const parking=o.estado_auto!=='RETIRADO'&&days!==null&&days>pDays?(days-pDays)*pRate:0;
+  const cost=own&&purchase!==null?purchase+preparation+parking:null;
   // Margen = venta cobrada − compra (o pago al dueño) − costos. En consignados ese margen es la comisión, aunque no se cobre explícita.
-  const result=sold&&sale!==null&&purchase!==null?sale-purchase-preparation:null;
+  const result=sold&&sale!==null&&purchase!==null?sale-purchase-preparation-parking:null;
   const margin=result!==null&&sale>0?result/sale*100:null;
   const salePending=sold&&!soldFicha;
   const unconfirmed=ms.filter(m=>!paid(m)).length,lines=ms.map(m=>({id:m.movimiento_id,date:date(m.fecha_operacion)||'',text:String(m.descripcion||m.referencia||'Movimiento'),amount:Number(m.monto),dir:m.direccion,op:m.operacion_auto||'',concept:m.concepto_nombre||'',confirmed:paid(m)})).sort((a,b)=>a.date.localeCompare(b.date));
-  return {id:v.vehiculo_id,listPrice:n(v.precio_publicado),lines,unconfirmed,hasFicha:!!o.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:sold?'VENDIDO':(o.estado_auto||'POR_REVISAR'),modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate,entryInferred,saleDate,activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,cost,sale,income,sold,result,margin,commission:o.modalidad==='CONSIGNADO'?result:null,salePending,saleDateCaja};
+  return {id:v.vehiculo_id,listPrice:n(v.precio_publicado),lines,unconfirmed,hasFicha:!!o.vehiculo_id,label:[v.patente,v.marca,v.modelo].filter(Boolean).join(' · '),status:sold?'VENDIDO':(o.estado_auto||'POR_REVISAR'),modality:o.modalidad||'POR_DEFINIR',days,parkingDays:days,entryDate,entryInferred,saleDate,activities:as.length,repairs:as.filter(a=>a.tipo==='ARREGLO').length,purchase,preparation,parking,parkingFree:pDays,parkingRate:pRate,cost,sale,income,sold,result,margin,commission:o.modalidad==='CONSIGNADO'?result:null,salePending,saleDateCaja};
  });
  const pending=d.forecasts.filter(active).map(f=>{
   const settled=confirmed.filter(m=>m.proyeccion_id===f.proyeccion_id&&m.direccion===f.direccion).reduce((s,m)=>s+Number(m.monto),0);
