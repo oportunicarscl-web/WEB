@@ -89,10 +89,58 @@ function ocSessionGuard_(u,token){
  props.setProperty(key,JSON.stringify(list));
 }
 
+// ---------- Dividir un pago ----------
+// Un movimiento (p. ej. 90.000 de lavados de 3 autos) se reemplaza por N partes que suman exactamente su monto.
+// Las partes heredan cuenta, fecha, signo, confirmación y concepto (sin auto) y se trabajan como cualquier movimiento;
+// el original queda anulado (no suma) y marcado como dividido. «Unir» deshace la división.
+function ocMovSplit_(p,actor){
+ const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),r=ocMovRow_(t,p.id);
+ if(Number(r.version||1)!==Number(p.expectedVersion))throw Error('El movimiento cambió. Recarga antes de dividir.');
+ const total=Number(r.monto);if(!Number.isSafeInteger(total)||total<=1)throw Error('El movimiento no tiene un monto que dividir.');
+ const parts=Array.isArray(p.parts)?p.parts.map(Number):[];
+ if(parts.length<2||parts.length>20)throw Error('Divide en 2 a 20 partes.');
+ if(parts.some(x=>!Number.isSafeInteger(x)||x<=0))throw Error('Cada parte debe ser un monto mayor que cero.');
+ if(parts.reduce((a,b)=>a+b,0)!==total)throw Error('Las partes deben sumar exactamente '+total+'.');
+ if(r.prestamo_id||r.socio||r.aporte_id)throw Error('Deshaz la asignación de aporte o préstamo antes de dividir.');
+ try{if(ocTable_('OC_FINANZAS_ID','IMPUTACIONES_SUELDO').rows.some(x=>ocProd_(x)&&String(x.movimiento_id)===String(r.movimiento_id)))throw Error('IMP');}catch(e){if(e.message==='IMP')throw Error('Quita la imputación en Liquidaciones antes de dividir.');}
+ const now=new Date().toISOString(),tag=Utilities.getUuid().slice(0,4),n=parts.length,base=String(r.movimiento_id),desc=String(r.descripcion||r.referencia||'Movimiento').replace(/^✂ \d+\/\d+ · /,'');
+ const keepConcept=!!r.concepto_id&&['APORTE_CAPITAL','PRESTAMO'].indexOf(String(r.naturaleza))<0;
+ const out=parts.map((monto,i)=>{
+  const id=base+'-D'+(i+1)+tag;
+  const row={movimiento_id:id,cuenta_id:r.cuenta_id,fecha_operacion:r.fecha_operacion,fecha_original:r.fecha_original||'',moneda:r.moneda||'CLP',direccion:r.direccion||'',monto:monto,
+   descripcion:'✂ '+(i+1)+'/'+n+' · '+desc,referencia:base,hash_origen:'DIV|'+id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'DIVISION',calidad:r.calidad||'',
+   monto_confirmado:r.monto_confirmado||'NO',incluir_en_saldo:r.incluir_en_saldo||'NO',tipo_fuente:r.tipo_fuente||'',estado_fuente:r.estado_fuente||'',estado_importacion:'DIVISION',
+   concepto_id:keepConcept?r.concepto_id:'',concepto_nombre:keepConcept?r.concepto_nombre:'',concepto_version:keepConcept?r.concepto_version:'',categoria:keepConcept?r.categoria:'',naturaleza:keepConcept?r.naturaleza:'',tipo_costo:keepConcept?r.tipo_costo:'',recurrente:keepConcept?r.recurrente:'',operacion_auto:keepConcept?r.operacion_auto:'',vehiculo_id:'',
+   estado_clasificacion:!keepConcept?'PENDIENTE':r.operacion_auto?'POR_ASIGNAR_AUTO':'CLASIFICADO',observacion:'División '+(i+1)+' de '+n+' de '+base,version:1,created_at:now,created_by:actor.id,updated_at:now,updated_by:actor.id};
+  Object.keys(row).forEach(k=>{if(t.headers.indexOf(k)<0)delete row[k];});
+  return row;
+ });
+ osAudit_(actor,'DIVIDIR_MOVIMIENTO','MOVIMIENTOS_BANCARIOS',base,{monto:total,partes:parts,ids:out.map(x=>x.movimiento_id)});
+ out.forEach(row=>{ocPatchRow_(t,t.sheet.getLastRow()+1,row);});
+ const pp=ocBump_(r,actor,{estado_registro:'ANULADO'});if(t.headers.indexOf('observacion')>=0)pp.observacion='DIVIDIDO en '+n+' partes';
+ ocPatchRow_(t,r._row,pp);
+ return {parentId:base,children:out.map(ocSlimMov_)};
+}
+function ocMovUnsplit_(p,actor){
+ const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),base=String(p.parentId||'');
+ const kids=t.rows.filter(r=>ocProd_(r)&&String(r.estado_importacion)==='DIVISION'&&String(r.referencia)===base);
+ if(!kids.length)throw Error('No hay partes activas de esa división.');
+ try{const imp=ocTable_('OC_FINANZAS_ID','IMPUTACIONES_SUELDO').rows;if(kids.some(k=>imp.some(x=>ocProd_(x)&&String(x.movimiento_id)===String(k.movimiento_id))))throw Error('IMP');}catch(e){if(e.message==='IMP')throw Error('Quita las imputaciones de las partes en Liquidaciones antes de unir.');}
+ const parents=t.rows.filter(r=>String(r.movimiento_id)===base&&r.ambiente==='PRODUCCION');if(parents.length!==1)throw Error('No se encontró el movimiento original.');
+ const parent=parents[0];
+ osAudit_(actor,'UNIR_DIVISION','MOVIMIENTOS_BANCARIOS',base,{partes:kids.map(k=>k.movimiento_id)});
+ kids.forEach(k=>ocPatchRow_(t,k._row,ocBump_(k,actor,{estado_registro:'ANULADO'})));
+ const pp=ocBump_(parent,actor,{estado_registro:'ACTIVO'});if(t.headers.indexOf('observacion')>=0)pp.observacion='';
+ ocPatchRow_(t,parent._row,pp);
+ return {parent:ocSlimMov_(Object.assign({},parent,pp)),removed:kids.map(k=>String(k.movimiento_id))};
+}
+
 function ocExtrasExtra_(p,actor){
  if(p.action==='settings')return ocSettings_();
  if(p.action==='saveSettings')return ocSaveSettings_(p,actor);
  if(p.action==='movEdit')return ocMovEdit_(p,actor);
  if(p.action==='movVoid')return ocMovVoid_(p,actor);
+ if(p.action==='movSplit')return ocMovSplit_(p,actor);
+ if(p.action==='movUnsplit')return ocMovUnsplit_(p,actor);
  return undefined;
 }

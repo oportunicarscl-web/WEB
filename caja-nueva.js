@@ -151,7 +151,7 @@ const canFixQuick=m=>!!(config&&config.isAdmin&&config.quickEdit&&m.source==='AT
 const isOwn=m=>m.source==='MANUAL'||m.source==='ATAJO'||m.origin==='MANUAL';
 function gear(m){
  const open=s.gear===m.id,quickOpen=isQuickOpen(m),edit=!!config.editMovement;
- return `<div class="cn-gearbox"><button class="cn-gear" data-gear="${m.id}" title="Corregir movimiento" aria-label="Corregir movimiento">⚙</button>${open?`<span class="cn-flip">${quickOpen?'':`<button data-flip="${m.id}" data-v="${ENT}"${m.direction===ENT&&!m.directionInferred?' disabled':''}>Es ingreso</button><button data-flip="${m.id}" data-v="${SAL}"${m.direction===SAL&&!m.directionInferred?' disabled':''}>Es egreso</button>`}${edit?`<button data-medit="${m.id}">Editar…</button>`:''}${edit&&isOwn(m)?`<button data-mvoid="${m.id}" class="cn-undo">Eliminar</button>`:''}</span>`:''}</div>`;
+ return `<div class="cn-gearbox"><button class="cn-gear" data-gear="${m.id}" title="Corregir movimiento" aria-label="Corregir movimiento">⚙</button>${open?`<span class="cn-flip">${quickOpen?'':`<button data-flip="${m.id}" data-v="${ENT}"${m.direction===ENT&&!m.directionInferred?' disabled':''}>Es ingreso</button><button data-flip="${m.id}" data-v="${SAL}"${m.direction===SAL&&!m.directionInferred?' disabled':''}>Es egreso</button>`}${edit?`<button data-medit="${m.id}">Editar…</button>`:''}${config.splitMovement&&!quickOpen&&Number(m.amount)>1?`<button data-msplit="${m.id}">Dividir pago</button>`:''}${config.unsplitMovement&&m.source==='DIVISION'?`<button data-munsplit="${esc(m.parentRef||'')}" class="cn-undo">Unir división</button>`:''}${edit&&isOwn(m)?`<button data-mvoid="${m.id}" class="cn-undo">Eliminar</button>`:''}</span>`:''}</div>`;
 }
 // ---------- Selección múltiple (solo del mismo signo) ----------
 const signOf=m=>m.direction===ENT||m.direction===SAL?m.direction:'';
@@ -270,6 +270,13 @@ function wire(el){
  const ba=el.querySelector('#cn-bulk-apply');if(ba)ba.onclick=()=>{if(bcar)s.bulk.car=bcar.value;bulkApply(el);};
  const bf=el.querySelector('#cn-bulk-confirm');if(bf)bf.onclick=()=>bulkConfirm(el);
  const bx=el.querySelector('#cn-bulk-clear');if(bx)bx.onclick=()=>{s.sel.clear();s.bulk={concept:'',car:''};draw(el);};
+ el.querySelectorAll('[data-msplit]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.msplit);s.gear='';if(m)splitDialog(el,m);else draw(el);});
+ el.querySelectorAll('[data-munsplit]').forEach(b=>b.onclick=async()=>{
+  const pid=b.dataset.munsplit;s.gear='';if(!pid)return;
+  if(!confirm('¿Unir de nuevo esta división? Las partes se eliminan (con su concepto y auto) y vuelve el movimiento original.')){draw(el);return;}
+  try{const r=await config.unsplitMovement(pid);r.removed.forEach(id=>{removeMovement(id);s.sel.delete(id);});if(r.parent)addMovements([r.parent]);s.message='División deshecha: volvió el movimiento original.';}catch(e){s.message=e.message;}
+  draw(el);
+ });
  el.querySelectorAll('[data-medit]').forEach(b=>b.onclick=()=>{const m=s.movements.find(x=>x.id===b.dataset.medit);s.gear='';if(m)editDialog(el,m);else draw(el);});
  el.querySelectorAll('[data-mvoid]').forEach(b=>b.onclick=async()=>{
   const m=s.movements.find(x=>x.id===b.dataset.mvoid);s.gear='';if(!m||m.saving)return;
@@ -320,6 +327,31 @@ async function linkDialog(el,next,select){
   d.close();persist(el,{...next,...f});};
 }
 // Editar todo lo editable: lo ingresado por personas entero; lo del banco / Mercado Pago solo ingreso-egreso, concepto y auto.
+// Dividir pago: N partes que suman exactamente el monto. La última parte se completa sola con lo que falta.
+function splitDialog(el,m){
+ const total=Number(m.amount);
+ const d=document.createElement('dialog');d.className='oc-dialog';d.dataset.cnDialog='';
+ d.innerHTML=`<form><h2>Dividir pago</h2><p>${esc(m.account)} · ${esc(fmtDate(m.date))} · ${esc(m.description)} · <b>${money(total)}</b></p>
+  <p><small>El pago se reemplaza por varias partes (marcadas «✂ 1/3», «✂ 2/3»…) que se asignan por separado: concepto, auto, etc. Solo las partes suman en la caja. Se puede deshacer con «Unir división».</small></p>
+  <div class="oc-caja-form"><label>¿En cuántas partes?<input id="cn-sp-n" type="number" min="2" max="20" step="1" value="2" required></label></div>
+  <div id="cn-sp-parts" class="oc-caja-form"></div><p id="cn-sp-sum"></p><p role="status"></p>
+  <button type="submit">Dividir</button> <button type="button" id="cn-cancel">Cancelar</button></form>`;
+ document.body.append(d);d.addEventListener('close',()=>d.remove());d.showModal();d.querySelector('#cn-cancel').onclick=()=>d.close();
+ const box=d.querySelector('#cn-sp-parts'),nIn=d.querySelector('#cn-sp-n'),sumEl=d.querySelector('#cn-sp-sum'),btn=d.querySelector('[type=submit]');
+ const inputs=()=>[...box.querySelectorAll('input')];
+ const paint=()=>{const xs=inputs(),last=xs[xs.length-1],rest=xs.slice(0,-1).reduce((a,i)=>a+(Number(i.value)||0),0);last.value=String(total-rest);
+  const ok=xs.every(i=>Number.isSafeInteger(Number(i.value))&&Number(i.value)>0);
+  sumEl.innerHTML=`Suma ${money(xs.reduce((a,i)=>a+Number(i.value||0),0))} de ${money(total)} ${ok?'<b class="cn-ok">· cuadra</b>':'<b class="cn-bad">· cada parte debe ser mayor que cero</b>'}`;btn.disabled=!ok;};
+ const build=()=>{const n=Math.max(2,Math.min(20,Math.floor(Number(nIn.value)||2))),each=Math.floor(total/n);
+  box.innerHTML=Array.from({length:n},(_,i)=>`<label>Parte ${i+1}${i===n-1?' (se completa sola)':''}<input type="number" min="1" step="1" inputmode="numeric" value="${each}"${i===n-1?' readonly':''}></label>`).join('');
+  inputs().slice(0,-1).forEach(i=>i.oninput=paint);paint();};
+ nIn.oninput=build;build();
+ d.querySelector('form').onsubmit=async e=>{e.preventDefault();const st=d.querySelector('[role=status]'),parts=inputs().map(i=>Number(i.value));
+  if(parts.reduce((a,b)=>a+b,0)!==total||parts.some(x=>!(x>0))){st.textContent='Las partes deben sumar exactamente el total.';return;}
+  btn.disabled=true;st.textContent='Dividiendo…';
+  try{const kids=await config.splitMovement(m,parts);removeMovement(m.id);s.sel.delete(m.id);addMovements(kids);d.close();s.message=`Pago dividido en ${kids.length} partes: asígnalas como cualquier movimiento.`;draw(el);}
+  catch(err){st.textContent=err.message;btn.disabled=false;}};
+}
 function editDialog(el,m){
  const own=isOwn(m),c=m.classification,acc=accountsInfo(),carOf=id=>{const v=s.inventory.find(x=>String(x.id)===String(id));return v?carLabel(v):'';};
  const opts=s.concepts.filter(x=>!['APORTE_CAPITAL','PRESTAMO'].includes(x.nature)||(c&&c.id===x.id));
