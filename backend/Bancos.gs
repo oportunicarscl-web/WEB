@@ -1,6 +1,6 @@
 // Each bank owns an input sheet. Original columns stay intact. Only the shared
 // ledger is used for balances. Profile mappings match the bank's actual export.
-const OS_BANK_INPUTS={MERCADO_PAGO:'MERCADO PAGO',SECURITY_PERSONAL:'SECURITY PERSONAL',CAJA:'CAJA',SECURITY_EMPRESA:'SECURITY EMPRESA',BANCO_CHILE:'BANCO CHILE'};
+const OS_BANK_INPUTS={MERCADO_PAGO:'MERCADO PAGO',SCOTIABANK_PERSONAL:'SCOTIABANK PERSONAL',CAJA:'CAJA',BANCO_CHILE:'BANCO CHILE'};
 function prepararEntradasBancos(){
  const b=SpreadsheetApp.openById(ocProperty_('OC_FINANZAS_ID'));
  Object.keys(OS_BANK_INPUTS).forEach(name=>{let s=b.getSheetByName(name);if(!s){s=b.insertSheet(name);s.getRange(1,1,1,6).setValues([['fecha','descripcion','abono','cargo','referencia','saldo']]);s.getRange('A1').setNote('Pega aquí los encabezados y filas de la cartola original. Puedes reemplazar estas columnas. Configura su correspondencia en PERFILES_IMPORTACION antes de importar.');s.setFrozenRows(1);}s.showSheet();});

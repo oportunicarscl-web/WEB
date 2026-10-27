@@ -1,6 +1,6 @@
 (function(root){
  'use strict';
- const accounts=[['CTA-MERCADO-PAGO','MERCADO PAGO'],['CTA-SECURITY-PERSONAL','SECURITY PERSONAL'],['CTA-CAJA','CAJA'],['CTA-SECURITY-EMPRESA','SECURITY EMPRESA'],['CTA-BANCO-CHILE','BANCO CHILE']];
+ const accounts=[['CTA-MERCADO-PAGO','MERCADO PAGO'],['CTA-SECURITY-PERSONAL','SCOTIABANK PERSONAL'],['CTA-CAJA','CAJA'],['CTA-BANCO-CHILE','BANCO CHILE']];
  function amount(value){
   if(typeof value==='number')return Number.isSafeInteger(value)?value:null;
   let s=String(value??'').trim().replace(/\$|CLP|\s/g,'');

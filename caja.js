@@ -1,6 +1,6 @@
 (function(root){
 'use strict';
-const accounts=['MERCADO PAGO','SECURITY PERSONAL','CAJA','SECURITY EMPRESA','BANCO CHILE'];
+const accounts=['MERCADO PAGO','SCOTIABANK PERSONAL','CAJA','BANCO CHILE'];
 const defaults=[
  {id:'claxo',name:'Pago recurrente Claxo',category:'RP',nature:'GASTO',cost:'FIJO',recurring:true,vehicleOperation:'',version:1},
  {id:'cyc',name:'Pago CYC',category:'Marketing',nature:'GASTO',cost:'FIJO',recurring:false,vehicleOperation:'',version:1},

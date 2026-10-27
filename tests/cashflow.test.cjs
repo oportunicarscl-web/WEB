@@ -3,8 +3,8 @@ const assert=require('node:assert/strict');
 const c=require('../cash-import.js');
 const map={date:0,amount:1,reference:2,id:3,credit:'',debit:''};
 const a='CTA-MERCADO-PAGO';
-test('Cinco cuentas independientes; pesos enteros y fechas reales',()=>{
- assert.equal(c.accounts.length,5);assert.equal(c.amount('1.200.000'),1200000);assert.equal(c.amount('1,200,000'),1200000);assert.equal(c.amount('(1200)'),-1200);assert.equal(c.amount('+1200'),1200);assert.equal(c.amount('1,25'),null);assert.equal(c.amount(''),null);
+test('Cuatro cuentas independientes; pesos enteros y fechas reales',()=>{
+ assert.equal(c.accounts.length,4);assert.equal(c.amount('1.200.000'),1200000);assert.equal(c.amount('1,200,000'),1200000);assert.equal(c.amount('(1200)'),-1200);assert.equal(c.amount('+1200'),1200);assert.equal(c.amount('1,25'),null);assert.equal(c.amount(''),null);
  assert.equal(c.date('31/02/2026'),null);assert.equal(c.date('17/10/2026'),'2026-10-17');
 });
 test('Dirección se conserva y no se acepta Mercado Pago provisional',()=>{

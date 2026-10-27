@@ -40,7 +40,7 @@ El modo CARTOLA_EFECTIVA debe usarse solo para una cartola que ya representa ent
 
 Identidad del movimiento: cuenta + ID del evento bancario estable; sin ID, lote + posición. Reimportar el mismo lote no duplica. Una coincidencia de contenido de otro lote queda por revisar, no se elimina. Los perfiles deben mapear el ID del evento efectivo, no un ID de pago reutilizado para venta, comisión y liquidación. Un registro ya existente no se sobrescribe al reimportar: sus correcciones requieren revisión, no cambiar silenciosamente una clasificación.
 
-Faltan cartolas reales de Security Personal, Security Empresa y Banco Chile para certificar los perfiles concretos. No se han inventado sus encabezados.
+Scotiabank Personal se importa pegando su cartola en Administrar (ver CARTOLAS.md). Falta una cartola real de Banco Chile para agregar su formato.
 
 ## Verificación
 

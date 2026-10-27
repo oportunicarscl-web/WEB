@@ -17,6 +17,7 @@ function ocExtra_(p,actor){
  if(p.action==='quickVoid')return ocQuickVoid_(p,actor);
  if(p.action==='syncMercadoPago')return osMpSync_(p,actor);
  if(p.action==='saveMpToken')return osMpSaveToken_(p,actor);
+ if(typeof ocCartolaExtra_==='function'){const x=ocCartolaExtra_(p,actor);if(x!==undefined)return x;}
  if(typeof ocLiqExtra_==='function'){const x=ocLiqExtra_(p,actor);if(x!==undefined)return x;}
  if(typeof ocSociosExtra_==='function'){const x=ocSociosExtra_(p,actor);if(x!==undefined)return x;}
  if(typeof ocExtrasExtra_==='function'){const x=ocExtrasExtra_(p,actor);if(x!==undefined)return x;}
