@@ -2,6 +2,7 @@
 // Archivo NUEVO: crear 'Cartolas.gs' y pegar todo. ocExtra_ (Atajo.gs) ya lo llama con ocCartolaExtra_.
 // La web interpreta el formato de cada banco (cartolas.js); aquí se vuelve a comprobar la cadena de saldos,
 // se descartan los movimientos ya importados (misma huella) y se escriben todos de una vez.
+// La hoja valida valores: origen ∈ {DEMO,MANUAL,IMPORTACION,API,CALCULO}; referencia debe ser texto (el docto se guarda con ' para no perder los ceros).
 
 function ocCartolaExtra_(p,actor){
  if(p.action==='cartolaImport')return ocCartolaImport_(p,actor);
@@ -40,7 +41,7 @@ function ocCartolaImport_(p,actor){
  rows.forEach((q,i)=>{
   const key=ocCartolaFingerprint_(acc,q);if(seen[key]){skipped++;return;}seen[key]=true;
   fresh.push({movimiento_id:'CAR-'+osHash_(key+'|'+batch).slice(0,24),cuenta_id:acc,fecha_operacion:q.date,fecha_original:q.date,moneda:'CLP',direccion:q.direction,monto:q.amount,saldo_cartola:q.balance,
-   descripcion:q.description,referencia:q.doc,hash_origen:key,lote_importacion_id:batch,fuente_fila:Number(p.offset||0)+i+1,tipo_fuente:'cartola_'+format,estado_importacion:'CARTOLA',origen:'CARTOLA',calidad:'CONFIRMADO',
+   descripcion:q.description,referencia:q.doc?"'"+q.doc:'',hash_origen:key,lote_importacion_id:batch,fuente_fila:Number(p.offset||0)+i+1,tipo_fuente:'cartola_'+format,estado_importacion:'CARTOLA',origen:'IMPORTACION',calidad:'CONFIRMADO',
    monto_confirmado:'SI',incluir_en_saldo:'SI',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',ambiente:'PRODUCCION',estado_registro:'ACTIVO',version:1,created_at:now,created_by:actor.id,updated_at:now,updated_by:actor.id});
  });
  if(fresh.length){
@@ -51,7 +52,7 @@ function ocCartolaImport_(p,actor){
  if(typeof osAudit_==='function')osAudit_(actor,'IMPORTAR_CARTOLA','MOVIMIENTOS_BANCARIOS',batch,{cuenta:acc,formato:format,nuevos:fresh.length,ya_estaban:skipped,saldo_final:rows[rows.length-1].balance});
  return {batch:batch,saved:fresh.map(ocCartolaSlim_),skipped:skipped};
 }
-function ocCartolaSlim_(r){const o=ocSlimMov_(r);['saldo_cartola','lote_importacion_id','hash_origen'].forEach(k=>{if(r[k]!==undefined)o[k]=r[k];});return o;}
+function ocCartolaSlim_(r){const o=ocSlimMov_(r);if(typeof o.referencia==='string')o.referencia=o.referencia.replace(/^'/,'');['saldo_cartola','lote_importacion_id','hash_origen'].forEach(k=>{if(r[k]!==undefined)o[k]=r[k];});return o;}
 // Deshace una importación completa (lote). Si alguna línea se dividió, primero hay que unir la división.
 function ocCartolaVoid_(p,actor){
  if(!ocIsAdminUser_(actor))throw Error('Solo el administrador de la caja anula importaciones.');
@@ -99,5 +100,13 @@ function diagnosticarCartolas(){
  const need=['movimiento_id','cuenta_id','fecha_operacion','fecha_original','moneda','direccion','monto','saldo_cartola','descripcion','referencia','hash_origen','lote_importacion_id','fuente_fila','tipo_fuente','estado_importacion','origen','calidad','monto_confirmado','incluir_en_saldo','estado_clasificacion','estado_conciliacion','ambiente','estado_registro','version','created_at','created_by','updated_at','updated_by'];
  const cuentas=ocTable_('OC_MAESTROS_ID','CUENTAS_FINANCIERAS').rows.filter(ocProd_).map(a=>a.cuenta_id+'='+a.nombre+(ocIsCash_(a)?' (efectivo)':''));
  const out={faltan:need.filter(h=>fin.headers.indexOf(h)<0),filas:fin.rows.length,columnas:fin.headers.length,lecturaMs:t1-t0,cuentas:cuentas};
+ console.log(JSON.stringify(out));return out;
+}
+
+// Diagnóstico de solo lectura: listas desplegables (validaciones) de MOVIMIENTOS_BANCARIOS.
+function diagnosticarValidacionesMovimientos(){
+ const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),row=Math.max(2,t.sheet.getLastRow());
+ const v=t.sheet.getRange(row,1,1,t.headers.length).getDataValidations()[0];
+ const out=t.headers.map((h,i)=>v[i]?h+': '+String(v[i].getCriteriaType())+' '+JSON.stringify(v[i].getCriteriaValues().map(x=>Array.isArray(x)?x:String(x))):'').filter(Boolean);
  console.log(JSON.stringify(out));return out;
 }
