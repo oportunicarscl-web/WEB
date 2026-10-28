@@ -50,7 +50,7 @@ function conceptOptions(){return `<option value="">Concepto por asignar</option>
 function draw(el){
  const manual=(root.OCCajaNueva?.movementsBySource('MANUAL')||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,40);
  el.innerHTML=`<p class="oc-eyebrow">ADMINISTRAR</p><h2>Movimientos a mano</h2><p>Respaldo para lo que la API de Mercado Pago o la cartola automática no traen. Quedan con el importe confirmado; si les asignas concepto (y auto) cuentan en el saldo de inmediato. En «Pegar cartola» se copian los movimientos tal como salen de la cartola del banco: el formato se reconoce solo y cargo o abono se deduce del saldo.</p>
- ${s.message?`<p role="status">${esc(s.message)}</p>`:''}
+ ${s.message&&!(s.tab==='varios'&&s.cart)?`<p role="status"><b>${esc(s.message)}</b></p>`:''}
  <div class="oc-tabs"><button class="oc-tab${s.tab==='uno'?' active':''}" data-ad-tab="uno">Un movimiento</button><button class="oc-tab${s.tab==='varios'?' active':''}" data-ad-tab="varios">Pegar cartola</button><button class="oc-tab${s.tab==='lotes'?' active':''}" data-ad-tab="lotes">Cartolas importadas (${batches().length})</button><button class="oc-tab${s.tab==='lista'?' active':''}" data-ad-tab="lista">Ingresados a mano (${manual.length})</button><button class="oc-tab${s.tab==='mp'?' active':''}" data-ad-tab="mp">Mercado Pago</button></div>
  <datalist id="ad-cars">${[...carMap().keys()].map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist>
  ${s.tab==='uno'?one():s.tab==='varios'?many():s.tab==='lotes'?lots():s.tab==='mp'?mp():list(manual)}`;
@@ -101,30 +101,42 @@ function analyze(){
 function cartView(){
  const r=s.cart,acc=accounts().find(a=>a.id===s.account),okRows=r.rows.filter(x=>!x.error),fresh=okRows.filter(x=>x.state!=='dup'),dups=okRows.length-fresh.length,maybe=fresh.filter(x=>x.state==='maybe').length;
  const src={cartola:'del encabezado pegado',anterior:'de la cartola anterior',manual:'ingresado por ti'}[r.openingSource]||'';
- const chip=x=>x.error?`<span class="oc-chip oc-chip-bad">${esc(x.error)}</span>`:x.state==='dup'?'<span class="oc-chip">Ya importada</span>':x.state==='maybe'?`<span class="oc-chip oc-chip-warn" title="${esc(fmtDate(x.match.date)+' · '+x.match.description)}">¿Ya ingresada a mano?</span>`:'<span class="oc-chip oc-chip-ok">Nueva</span>';
+ const chip=x=>x.error==='Falta el saldo inicial'?'<span class="oc-chip oc-chip-warn">¿Cargo o abono?</span>':x.error?`<span class="oc-chip oc-chip-bad">${esc(x.error)}</span>`:x.state==='dup'?'<span class="oc-chip">Ya importada</span>':x.state==='maybe'?`<span class="oc-chip oc-chip-warn" title="${esc(fmtDate(x.match.date)+' · '+x.match.description)}">¿Ya ingresada a mano?</span>`:'<span class="oc-chip oc-chip-ok">Nueva</span>';
  const amt=(x,d)=>x.direction===d?money(x.amount):x.direction?'':'<small>?</small>';
  const blocked=!isBankAccount(acc);
+ const f=r.rows[0],why=blocked?'Elige arriba la cuenta bancaria de esta cartola (no Caja ni Mercado Pago).':r.needsOpening?'':r.bad?`Hay ${r.bad} línea${r.bad===1?'':'s'} con descuadre (marcadas en rojo): revisa que pegaste la cartola completa y en orden.`:!fresh.length?'Todos estos movimientos ya estaban importados.':'';
+ const ready=!why&&!r.needsOpening&&!s.busy;
  return `<div class="oc-caja-form">${accountSelect()}</div>
- <p><b>Formato: ${esc(r.format.name)}</b> · ${r.rows.length} movimientos${r.ignored?` · ${r.ignored} líneas de encabezado o pie ignoradas`:''}</p>
- ${blocked?'<p><span class="oc-chip oc-chip-bad">Elige la cuenta bancaria de esta cartola (no Caja ni Mercado Pago).</span></p>':''}
- ${r.opening===null?`<div class="oc-caja-form"><p>No encuentro el saldo inicial: pega también el encabezado de la cartola, escríbelo, o indica qué fue la primera línea.</p>
-  <label>Saldo inicial<input id="ad-opening" inputmode="numeric" placeholder="Ej. 12.560.266"></label><p><button id="ad-opening-ok">Usar saldo</button> <button data-ad-first="SALIDA">La 1.ª línea es cargo</button> <button data-ad-first="ENTRADA">La 1.ª línea es abono</button></p></div>`
-  :`<p>Saldo inicial ${money(r.opening)} <small>(${esc(src)})</small> → saldo final ${money(r.final)} · <span class="oc-in">Abonos +${money(r.totals.in)}</span> · <span class="oc-out">Cargos −${money(r.totals.out)}</span> · ${r.bad?`<span class="oc-chip oc-chip-bad">${r.bad} con descuadre</span>`:'<span class="oc-chip oc-chip-ok">✓ Cuadra con el saldo de la cartola</span>'}</p>`}
+ <p><b>Formato: ${esc(r.format.name)}</b> · ${r.rows.length} movimientos${r.ignored?` · ${r.ignored} trozos de encabezado o pie ignorados`:''}</p>
+ ${r.opening!==null?`<p>Saldo inicial ${money(r.opening)} <small>(${esc(src)})</small> → saldo final ${money(r.final)} · <span class="oc-in">Abonos +${money(r.totals.in)}</span> · <span class="oc-out">Cargos −${money(r.totals.out)}</span> · ${r.bad?`<span class="oc-chip oc-chip-bad">${r.bad} con descuadre</span>`:'<span class="oc-chip oc-chip-ok">✓ Cuadra con el saldo de la cartola</span>'}</p>`:''}
  ${r.gap?`<p><span class="oc-chip oc-chip-warn">Ojo</span> La cartola anterior importada terminó el ${esc(fmtDate(r.gap.date))} con ${money(r.gap.balance)} y esta parte con ${money(r.opening)}: puede faltar una cartola entre medio.</p>`:''}
- <div class="oc-table-scroll"><table><thead><tr><th>#</th><th>Fecha</th><th>Descripción</th><th>Docto.</th><th>Cargo</th><th>Abono</th><th>Saldo</th><th></th></tr></thead><tbody>${r.rows.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(fmtDate(x.date))}</td><td>${esc(x.description)}</td><td><small>${esc(x.doc)}</small></td><td class="oc-out">${amt(x,'SALIDA')}</td><td class="oc-in">${amt(x,'ENTRADA')}</td><td>${money(x.balance)}</td><td>${chip(x)}</td></tr>`).join('')}</tbody></table></div>
- <p>${fresh.length} nuevas${dups?` · ${dups} ya estaban importadas (no se repiten)`:''}${maybe?` · ${maybe} parecen ingresadas a mano o por atajo: revísalas después en la Caja`:''}</p>
- <p><button id="ad-cart-save" ${r.bad||!fresh.length||blocked||s.busy?'disabled':''}>Importar ${fresh.length} movimientos</button> <button id="ad-cart-back">Volver a pegar</button></p>`;
+ <div id="ad-cart-bar" class="oc-card" style="border:2px solid ${ready?'#5f9c74':'#d9a441'};padding:14px;margin:10px 0">
+  ${r.needsOpening&&f?`<p><b>Falta un dato:</b> pegaste solo los movimientos, sin el «Saldo inicial» de la cartola. ¿La primera línea fue cargo o abono? <small>(Lo más seguro es pegar la cartola completa, con encabezado, para que el saldo inicial salga solo.)</small><br><small>${esc(fmtDate(f.date))} · ${esc(f.description)} · ${money(f.amount)} · saldo ${money(f.balance)}</small></p>
+  <p><button data-ad-first="SALIDA">Fue cargo (salió)</button> <button data-ad-first="ENTRADA">Fue abono (entró)</button> <small>o escribe el saldo inicial:</small> <input id="ad-opening" inputmode="numeric" placeholder="Ej. 12.560.266" style="width:140px"> <button id="ad-opening-ok">Usar saldo</button></p>`:''}
+  ${why?`<p><span class="oc-chip oc-chip-bad">${esc(why)}</span></p>`:''}
+  ${s.message?`<p role="status"><b>${esc(s.message)}</b></p>`:''}
+  <p style="margin-bottom:0"><button id="ad-cart-save" ${s.busy?'disabled':''} style="${ready?'background:#2f6b45;color:#fff;border-color:#2f6b45;font-weight:700':''}">${s.busy?'Importando…':`Importar ${fresh.length} movimientos`}</button> <button id="ad-cart-back">Volver a pegar</button>
+  <small>${fresh.length} nuevas${dups?` · ${dups} ya estaban importadas (no se repiten)`:''}${maybe?` · ${maybe} parecen ingresadas a mano o por atajo: revísalas después en la Caja`:''}</small></p>
+ </div>
+ <div class="oc-table-scroll"><table><thead><tr><th>#</th><th>Fecha</th><th>Descripción</th><th>Docto.</th><th>Cargo</th><th>Abono</th><th>Saldo</th><th></th></tr></thead><tbody>${r.rows.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(fmtDate(x.date))}</td><td>${esc(x.description)}</td><td><small>${esc(x.doc)}</small></td><td class="oc-out">${amt(x,'SALIDA')}</td><td class="oc-in">${amt(x,'ENTRADA')}</td><td>${money(x.balance)}</td><td>${chip(x)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 async function saveCart(el){
- if(s.busy||!s.cart||s.cart.bad)return;s.busy=true;s.message='Importando cartola…';draw(el);
+ if(s.busy||!s.cart)return;
+ const r0=s.cart,acc0=accounts().find(a=>a.id===s.account),fresh0=r0.rows.filter(x=>!x.error&&x.state!=='dup');
+ const stop=m=>{s.message=m;draw(el);el.querySelector('#ad-cart-bar')?.scrollIntoView({block:'center',behavior:'smooth'});};
+ if(!isBankAccount(acc0))return stop('Elige la cuenta bancaria de esta cartola.');
+ if(r0.needsOpening)return stop('Antes de importar, indica si la primera línea fue cargo o abono (o escribe el saldo inicial).');
+ if(r0.bad)return stop('No se puede importar con descuadres: revisa las líneas en rojo.');
+ if(!fresh0.length)return stop('No hay movimientos nuevos para importar.');
+ s.busy=true;s.message='Importando cartola… (puede tardar unos segundos)';draw(el);el.querySelector('#ad-cart-bar')?.scrollIntoView({block:'center',behavior:'smooth'});
  try{
   const rows=s.cart.rows.map(x=>({date:x.date,direction:x.direction,amount:x.amount,balance:x.balance,description:x.description,doc:x.doc}));
   const r=await config.cartolaImport(s.account,s.requestId,s.cart.format.id,s.cart.opening,rows);
   root.OCCajaNueva?.addMovements(r.saved);
   s.message=`${r.saved.length} movimientos importados${r.skipped?` · ${r.skipped} ya estaban`:''}. Quedan en «Por completar» para asignar concepto y auto.`;
   s.cart=null;s.text='';s.opening=null;s.accountTouched=false;s.requestId=uid();
- }catch(e){s.message=e.message;}
- s.busy=false;draw(el);
+ }catch(e){s.message='No se importó: '+e.message;}
+ s.busy=false;draw(el);el.querySelector('[role=status]')?.scrollIntoView({block:'center',behavior:'smooth'});
 }
 function batches(){
  const by=new Map();movs('CARTOLA').forEach(m=>{if(!m.batch)return;const b=by.get(m.batch)||{id:m.batch,account:m.account,rows:[]};b.rows.push(m);by.set(m.batch,b);});
@@ -152,12 +164,12 @@ function wire(el){
   if(f.car&&!car){s.message='Elige un auto de la lista.';draw(el);return;}
   submit(el,[{date:f.date,direction:f.direction,amount:Number(f.amount),description:f.description,conceptId:f.conceptId||'',vehicleId:car?String(car.id):''}],f.accountId||s.account);};
  const tk=el.querySelector('#ad-token');if(tk)tk.onclick=()=>root.OCCajaNueva?.tokenDialog(el);
- const text=el.querySelector('#ad-text');if(text)text.oninput=()=>{s.text=text.value;};
- const parse=el.querySelector('#ad-parse');if(parse)parse.onclick=()=>{s.opening=null;s.requestId=uid();if(analyze())s.parsed=[];else s.parsed=parseLines(s.text);draw(el);};
+ const text=el.querySelector('#ad-text');if(text){text.oninput=()=>{s.text=text.value;};text.onpaste=()=>setTimeout(()=>{s.text=text.value;s.message='';s.opening=null;s.requestId=uid();if(analyze()){s.parsed=[];draw(el);}},0);}
+ const parse=el.querySelector('#ad-parse');if(parse)parse.onclick=()=>{s.message='';s.opening=null;s.requestId=uid();if(analyze())s.parsed=[];else s.parsed=parseLines(s.text);draw(el);};
  const back=el.querySelector('#ad-cart-back');if(back)back.onclick=()=>{s.cart=null;s.opening=null;draw(el);};
  const cs=el.querySelector('#ad-cart-save');if(cs)cs.onclick=()=>saveCart(el);
- const op=el.querySelector('#ad-opening-ok');if(op)op.onclick=()=>{const v=C().clp(el.querySelector('#ad-opening').value);if(v===null){s.message='Saldo inicial inválido.';draw(el);return;}s.opening=v;analyze();draw(el);};
- el.querySelectorAll('[data-ad-first]').forEach(b=>b.onclick=()=>{const f=s.cart&&s.cart.rows[0];if(!f)return;s.opening=f.balance+(b.dataset.adFirst==='ENTRADA'?-f.amount:f.amount);analyze();draw(el);});
+ const op=el.querySelector('#ad-opening-ok');if(op)op.onclick=()=>{const v=C().clp(el.querySelector('#ad-opening').value);if(v===null){s.message='Saldo inicial inválido.';draw(el);return;}s.message='';s.opening=v;analyze();draw(el);};
+ el.querySelectorAll('[data-ad-first]').forEach(b=>b.onclick=()=>{const f=s.cart&&s.cart.rows[0];if(!f)return;s.message='';s.opening=f.balance+(b.dataset.adFirst==='ENTRADA'?-f.amount:f.amount);analyze();draw(el);});
  el.querySelectorAll('[data-ad-lot]').forEach(b=>b.onclick=async()=>{
   const c=Number(b.dataset.c);if(!confirm(`¿Anular esta importación? Se quitan sus ${b.dataset.n} movimientos de la caja${c?` y se pierde la asignación de los ${c} que ya tienen concepto`:''}. Puedes volver a pegar la cartola después.`))return;
   try{const ids=await config.cartolaVoid(b.dataset.adLot);ids.forEach(id=>root.OCCajaNueva?.removeMovement(id));s.message=`Importación anulada (${ids.length} movimientos).`;}catch(e){s.message=e.message;}draw(el);

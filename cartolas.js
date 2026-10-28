@@ -20,21 +20,35 @@ const DATE=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 // ---- Scotiabank · «Consulta detalle de cartola emitida» ----
 // Copia del PDF:  dd/mm/aaaa DESCRIPCIÓN DOCTO MONTO SALDO      (un solo monto; cargo o abono se deduce del saldo)
 // Copia de Excel: dd/mm/aaaa ⇥ DESCRIPCIÓN ⇥ DOCTO ⇥ CARGO ⇥ ABONO ⇥ SALDO
-const SCOTIA_PDF=/^(\d{2})\/(\d{2})\/(\d{4})\s+(.+?)\s+(\d{6,12})\s+(\$?\d[\d.]*)\s+(-?\$?\d[\d.]*)$/;
+// La copia del PDF puede venir con saltos de línea cortados o pegados al pie de página: se lee el texto completo
+// buscando cada «fecha … docto monto saldo», sin depender de que cada movimiento quede en su propia línea.
+const AMT='\\$?\\d{1,3}(?:\\.\\d{3})*',BAL='-?\\$?\\d{1,3}(?:\\.\\d{3})*';
+const SCOTIA_MOV=new RegExp('^(\\d{2})\\/(\\d{2})\\/(\\d{4})\\s+(.+?)\\s+(\\d{6,12})\\s+('+AMT+')\\s+('+BAL+')(?=\\s|$)');
+const DATE_START=/(^|\s)(\d{2}\/\d{2}\/\d{4})\s/g;
+function scotiaTab(line){
+ const t=line.split('\t').map(x=>x.trim());
+ if(t.length<6||!DATE.test(t[0])||!/^\d{6,12}$/.test(t[2]))return null;
+ const [,d,m,y]=t[0].match(DATE),date=isoDate(d,m,y),out=clp(t[3]),inn=clp(t[4]),balance=clp(t[5]);
+ if(!date||balance===null||(!out)===(!inn))return null;
+ return {date,description:t[1].replace(/\s+/g,' '),doc:t[2],amount:Math.abs(out||inn),balance,direction:inn?'ENTRADA':'SALIDA'};
+}
+function scotiaSegment(seg){
+ const m=seg.match(SCOTIA_MOV);if(!m)return null;
+ const date=isoDate(m[1],m[2],m[3]),amount=clp(m[6]),balance=clp(m[7]);
+ if(!date||!amount||balance===null)return null;
+ return {date,description:m[4].trim(),doc:m[5],amount:Math.abs(amount),balance,direction:''};
+}
 const scotiabank={
  id:'scotiabank',name:'Scotiabank',account:/scotia/i,
- detect(lines){return lines.filter(l=>this.parseLine(l)).length;},
- parseLine(line){
-  const t=line.split('\t').map(x=>x.trim());
-  if(t.length>=6&&DATE.test(t[0])&&/^\d{6,12}$/.test(t[2])){
-   const [,d,m,y]=t[0].match(DATE),date=isoDate(d,m,y),out=clp(t[3]),inn=clp(t[4]),balance=clp(t[5]);
-   if(!date||balance===null||(!out)===(!inn))return null;
-   return {date,description:t[1].replace(/\s+/g,' '),doc:t[2],amount:Math.abs(out||inn),balance,direction:inn?'ENTRADA':'SALIDA'};
-  }
-  const m=line.replace(/\s+/g,' ').trim().match(SCOTIA_PDF);if(!m)return null;
-  const date=isoDate(m[1],m[2],m[3]),amount=clp(m[6]),balance=clp(m[7]);
-  if(!date||!amount||balance===null)return null;
-  return {date,description:m[4].trim(),doc:m[5],amount:Math.abs(amount),balance,direction:''};
+ detect(text){return this.read(text).rows.length;},
+ read(text){
+  const src=String(text||''),rows=[];
+  if(/\t/.test(src)){src.split(/\r?\n/).forEach(l=>{const r=scotiaTab(l.trim());if(r)rows.push(r);});if(rows.length)return {rows,ignored:src.split(/\r?\n/).filter(l=>l.trim()).length-rows.length};}
+  const flat=src.replace(/\s+/g,' '),starts=[];let m;DATE_START.lastIndex=0;
+  while((m=DATE_START.exec(flat)))starts.push(m.index+m[1].length);
+  let ignored=0;
+  starts.forEach((st,i)=>{const r=scotiaSegment(flat.slice(st,i+1<starts.length?starts[i+1]:flat.length).trim());if(r)rows.push(r);else ignored++;});
+  return {rows,ignored};
  },
  header(text){
   const g=re=>{const m=text.match(re);return m?m[1]:'';};
@@ -46,8 +60,7 @@ const scotiabank={
 const FORMATS=[scotiabank];
 
 function detect(text){
- const lines=String(text||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
- let best=null,score=0;FORMATS.forEach(f=>{const n=f.detect(lines);if(n>score){score=n;best=f;}});
+ let best=null,score=0;FORMATS.forEach(f=>{const n=f.detect(String(text||''));if(n>score){score=n;best=f;}});
  return best;
 }
 
@@ -55,9 +68,8 @@ function detect(text){
 function parse(text,opts={}){
  const src=String(text||''),format=opts.format?FORMATS.find(f=>f.id===opts.format):detect(src);
  if(!format)return {format:null,rows:[],ignored:0,ok:false,error:'No reconozco el formato. Pega las líneas de movimientos tal como salen de la cartola.'};
- const header=format.header?format.header(src):{},lines=src.split(/\r?\n/);
- const rows=[];let ignored=0;
- lines.forEach((raw,i)=>{const l=raw.trim();if(!l)return;const r=format.parseLine(l);if(r)rows.push({line:i+1,raw:l,...r});else ignored++;});
+ const header=format.header?format.header(src):{},read=format.read(src),ignored=read.ignored;
+ const rows=read.rows.map((r,i)=>({line:i+1,...r}));
  // Saldo de partida: el que escribió el usuario, el del encabezado pegado o uno ya guardado que encaje con la primera línea.
  let opening=Number.isFinite(opts.opening)?opts.opening:null,openingSource=opening!==null?'manual':'';
  if(opening===null&&Number.isFinite(header.opening)){opening=header.opening;openingSource='cartola';}
@@ -74,8 +86,8 @@ function parse(text,opts={}){
   if(!r.error){if(r.direction==='ENTRADA')inn+=r.amount;else out+=r.amount;}
   prev=r.balance;
  });
- const bad=rows.filter(r=>r.error).length;
- return {format:{id:format.id,name:format.name},header,rows,ignored,opening,openingSource,final:rows.length?rows[rows.length-1].balance:opening,totals:{in:inn,out},bad,
+ const bad=rows.filter(r=>r.error).length,needsOpening=opening===null&&rows.length>0;
+ return {format:{id:format.id,name:format.name},header,rows,ignored,opening,openingSource,final:rows.length?rows[rows.length-1].balance:opening,totals:{in:inn,out},bad,needsOpening,
   ok:rows.length>0&&!bad,error:!rows.length?'No encontré movimientos en el texto pegado.':''};
 }
 // Huella única del movimiento en su cuenta. El saldo distingue dos cargos iguales el mismo día.

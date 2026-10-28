@@ -92,3 +92,12 @@ function ajustarCuentasScotiabank(){
  console.log(JSON.stringify(out));return out;
 }
 const OC_CUENTAS_SIN_USO=[/^security empresa$/i];
+
+// Diagnóstico de solo lectura para la importación de cartolas: columnas, cuentas y tiempo de lectura.
+function diagnosticarCartolas(){
+ const t0=Date.now(),fin=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),t1=Date.now();
+ const need=['movimiento_id','cuenta_id','fecha_operacion','fecha_original','moneda','direccion','monto','saldo_cartola','descripcion','referencia','hash_origen','lote_importacion_id','fuente_fila','tipo_fuente','estado_importacion','origen','calidad','monto_confirmado','incluir_en_saldo','estado_clasificacion','estado_conciliacion','ambiente','estado_registro','version','created_at','created_by','updated_at','updated_by'];
+ const cuentas=ocTable_('OC_MAESTROS_ID','CUENTAS_FINANCIERAS').rows.filter(ocProd_).map(a=>a.cuenta_id+'='+a.nombre+(ocIsCash_(a)?' (efectivo)':''));
+ const out={faltan:need.filter(h=>fin.headers.indexOf(h)<0),filas:fin.rows.length,columnas:fin.headers.length,lecturaMs:t1-t0,cuentas:cuentas};
+ console.log(JSON.stringify(out));return out;
+}

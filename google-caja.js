@@ -81,7 +81,7 @@
   if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint))throw Error('La dirección de conexión Google no es válida.');
   async function call(action,payload={}){
    const {data,error}=await client.auth.getSession();if(error||!data.session?.access_token)throw Error('Inicia sesión nuevamente.');
-   const control=new AbortController(),timer=setTimeout(()=>control.abort(),action==='syncMercadoPago'||action==='load'?150000:30000);
+   const control=new AbortController(),timer=setTimeout(()=>control.abort(),action==='syncMercadoPago'||action==='load'||action==='cartolaImport'||action==='cartolaVoid'?150000:30000);
    try{
     const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action,token:data.session.access_token}),credentials:'omit',redirect:'follow',referrerPolicy:'no-referrer',signal:control.signal});
     if(!response.ok)throw Error('Google no respondió correctamente.');
