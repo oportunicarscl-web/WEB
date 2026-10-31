@@ -21,6 +21,7 @@ function ocExtra_(p,actor){
  if(typeof ocLiqExtra_==='function'){const x=ocLiqExtra_(p,actor);if(x!==undefined)return x;}
  if(typeof ocSociosExtra_==='function'){const x=ocSociosExtra_(p,actor);if(x!==undefined)return x;}
  if(typeof ocExtrasExtra_==='function'){const x=ocExtrasExtra_(p,actor);if(x!==undefined)return x;}
+ if(typeof ocMailExtra_==='function'){const x=ocMailExtra_(p,actor);if(x!==undefined)return x;}
  return undefined;
 }
 function ocToday_(){return Utilities.formatDate(new Date(),'America/Santiago','yyyy-MM-dd');}
