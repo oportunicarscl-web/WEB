@@ -58,3 +58,9 @@ test('Modelo de flota: con historia produce óptimo dentro de la capacidad',()=>
  assert.equal(f.ready,true);assert.equal(f.margin,120);assert.equal(f.currentN,4);assert.ok(f.beta>=0.3&&f.beta<=1);assert.ok(f.optimal.n>=1&&f.optimal.n<=12);
  assert.equal(f.curve.length,13);assert.equal(f.profitNow,f.curve[4].profit);assert.ok(f.curve.every(p=>p.profit<=f.optimal.profit));
 });
+test('Capital por socio: ALEX y Alex son el mismo socio',()=>{
+ const d=base();
+ d.movements=[mv({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:1000,socio:'ALEX'}),mv({naturaleza:'APORTE_CAPITAL',direccion:'ENTRADA',monto:500,socio:'Alex '})];
+ const r=core.reports(d,'2026-10-19'),a=F.analyze(d,r,'2026-10-19');
+ assert.deepEqual(a.bySocio,{Alex:1500});
+});

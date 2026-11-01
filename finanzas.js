@@ -17,7 +17,9 @@ function monthList(start,today){const out=[];for(let k=ym(start);k<=ym(today)&&o
 function analyze(d,r,today){
  const moves=confirmed(d,today),sold=r.cars.filter(c=>c.sold);
  const contributions=moves.filter(m=>m.direccion==='ENTRADA'&&m.naturaleza==='APORTE_CAPITAL');
- const bySocio={};contributions.forEach(m=>{const k=m.socio||'Sin nombre';bySocio[k]=(bySocio[k]||0)+Number(m.monto);});
+ // Mismo socio aunque venga escrito distinto (ALEX, alex, Alex): se agrupa sin distinguir mayúsculas.
+ const socioName=m=>{const t=String(m.socio||'').trim();return t?t.toLowerCase().replace(/(^|\s)\S/g,x=>x.toUpperCase()):'Sin nombre';};
+ const bySocio={};contributions.forEach(m=>{const k=socioName(m);bySocio[k]=(bySocio[k]||0)+Number(m.monto);});
  const capital=sum(contributions.map(m=>Number(m.monto)));
  const carResult=sum(sold.map(c=>c.result||0)),overhead=sum(moves.filter(m=>m.direccion==='SALIDA'&&m.naturaleza==='GASTO').map(m=>Number(m.monto)));
  const profit=carResult-overhead,months=Math.max(1,r.dashboard.history.length);
