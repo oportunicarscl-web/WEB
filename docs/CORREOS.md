@@ -21,7 +21,7 @@ No incluye nada operativo (movimientos por clasificar, tareas, pendientes). Los 
 
 ## Apps Script
 
-- `CorreoCore.gs` = copia de `correo-core.js`. `Correos.gs` = `backend/Correos.gs`. En `ocExtra_` (Atajo.gs) se agrega la llamada a `ocMailExtra_`.
+- `CorreoCore.gs` = copia de `correo-core.js`. `Correos.gs` = `backend/Correos.gs`. `CorreoSistema.gs` = copia privada del motor de reportes actual (`OCMailSystemCore`), generada con `node tools/build-correo-sistema.cjs`: el `OCSystemCore` global del proyecto es antiguo (sin `active`) y no se toca. En `ocExtra_` (Atajo.gs) se agrega la llamada a `ocMailExtra_`.
 - Acciones (solo Alex): `mailLoad`, `mailSave` (con versión), `mailSend` (`to: 'me'` prueba con la configuración en edición, `to: 'all'` destinatarios guardados).
 - Ejecutar una vez `activarCorreosSemanales()` desde el editor: autoriza el envío de correo y crea el disparador horario `enviarCorreosProgramados`, que envía solo en el día/hora configurados y una vez por día (cada N semanas si corresponde).
 - Propiedades: `OC_MAIL_CONFIG` (configuración), `OC_MAIL_LAST` (último envío automático), `OC_MAIL_LOG` (últimos 30 envíos). Cambios de configuración quedan en AUDITORIA_SISTEMA.

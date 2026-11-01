@@ -66,3 +66,6 @@ assert.ok(R.stock.capitalStock>0&&R.stock.capitalPeriod>0);
 const R0=K.compute(D,f.today,K.normalize({capitalRate:0}));assert.strictEqual(R0.stock.capitalStock,0);assert.strictEqual(R0.cur.sales.afterCapital,R0.cur.sales.profit);
 const mh=K.build(D,f.today,K.defaults()).html;assert.ok(mh.includes('para revisar precio')&&mh.includes('Ajustar precio')&&mh.includes('Utilidad después de capital'));
 console.log('correos ok');
+// backend/CorreoSistema.gs debe estar generado desde el system-core.js actual (node tools/build-correo-sistema.cjs).
+{const fs=require('fs'),src=fs.readFileSync(__dirname+'/../system-core.js','utf8').trimEnd(),gs=fs.readFileSync(__dirname+'/../backend/CorreoSistema.gs','utf8');
+ assert.ok(gs.includes(src.slice(0,src.lastIndexOf('})(typeof globalThis'))),'CorreoSistema.gs desactualizado: ejecuta node tools/build-correo-sistema.cjs');}

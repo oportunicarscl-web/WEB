@@ -80,7 +80,13 @@ function prepare(loaded,cashStart){
  const latest=rows=>{const by={};(rows||[]).forEach(r=>{const k=String(r.vehiculo_id).trim(),o=by[k],t=x=>String(x.updated_at||x.created_at||'');if(!o||t(r)>=t(o))by[k]=Object.assign({},r,{vehiculo_id:k});});return Object.keys(by).map(k=>by[k]);};
  return {strictFrom:cashStart||CASH_START,inventory:loaded.inventory||[],operations:latest(loaded.operations),activities:loaded.activities||[],movements:(loaded.movements||[]).filter(effective),accounts:loaded.accounts||[],forecasts:loaded.forecasts||[],loans:loaded.loans||[],contributions:loaded.contributions||[],settings:loaded.settings||{},companyStart:loaded.companyStart||'',fixed:[]};
 }
-function core(){const c=root.OCSystemCore;if(!c)throw Error('Falta el motor de reportes (system-core).');return c;}
+// En Apps Script el correo usa su propia copia actual del motor (OCMailSystemCore, ver backend/CorreoSistema.gs):
+// la copia global antigua del proyecto no tiene las mismas funciones. En la web se usa el OCSystemCore cargado.
+function core(){
+ const c=root.OCMailSystemCore||root.OCSystemCore;
+ if(!c||['reports','paid','active'].some(k=>typeof c[k]!=='function'))throw Error('El motor de reportes está desactualizado: falta CorreoSistema.gs en Apps Script.');
+ return c;
+}
 // Período: los 7·N días que terminan ayer (días completos). Si sale el lunes, es la semana lunes–domingo anterior.
 function periodOf(today,weeks){const to=addDays(today,-1),from=addDays(to,-(7*weeks)+1);return {from,to,weeks,label:weeks===1?'Semana del '+dm(from)+' al '+dm(to):'Del '+dm(from)+' al '+dm(to)};}
 function cashOf(report){const known=(report.accounts||[]).filter(a=>Number.isFinite(a.balance));return known.length?known.reduce((s,a)=>s+a.balance,0):null;}
