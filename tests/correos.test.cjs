@@ -56,4 +56,13 @@ assert.ok(!/<script|<svg/i.test(m.html));
 assert.ok(m.text.includes('Autos vendidos: 2'));
 // Sin datos no se cae.
 const empty=K.build(K.prepare({}),'2026-11-02',K.defaults());assert.ok(empty.html.includes('No hubo ventas'));
+// Costo de capital y alertas de precio.
+assert.strictEqual(K.defaults().capitalRate,12);assert.throws(()=>K.normalize({capitalRate:150}),/capital/);assert.strictEqual(K.normalize({capitalRate:'9,5'}).capitalRate,9.5);
+const sold=R.cur.sales.list.find(c=>c.id==='V1');assert.strictEqual(sold.capital,Math.round(14500000*0.12*sold.days/365));
+assert.strictEqual(R.cur.sales.afterCapital,R.cur.sales.profit-R.cur.sales.list.filter(c=>c.result!==null).reduce((s,c)=>s+c.capital,0));
+assert.ok(R.prices.length>=1&&R.prices.every(a=>a.reason));assert.ok(R.prices.every(a=>a.reason==='NEGATIVO'||a.days>60));
+const tucson=R.prices.find(a=>a.label.includes('Tucson'));assert.strictEqual(tucson.reason,'MAS_90');assert.strictEqual(tucson.expected,tucson.list-tucson.cost);
+assert.ok(R.stock.capitalStock>0&&R.stock.capitalPeriod>0);
+const R0=K.compute(D,f.today,K.normalize({capitalRate:0}));assert.strictEqual(R0.stock.capitalStock,0);assert.strictEqual(R0.cur.sales.afterCapital,R0.cur.sales.profit);
+const mh=K.build(D,f.today,K.defaults()).html;assert.ok(mh.includes('para revisar precio')&&mh.includes('Ajustar precio')&&mh.includes('Utilidad después de capital'));
 console.log('correos ok');

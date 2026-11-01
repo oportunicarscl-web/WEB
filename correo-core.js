@@ -14,7 +14,7 @@ const MONO="'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace";
 const SANS="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 const MESES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const DIAS=['','lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
-const SECTIONS=[['semaforo','Semáforo de la semana'],['flujo','Flujo de caja por semana'],['ventas','Ventas y rentabilidad'],['caja','Caja y bancos'],['inventario','Inventario'],['capital','Capital de los socios'],['gastos','Composición de gastos']];
+const SECTIONS=[['semaforo','Semáforo de la semana'],['flujo','Flujo de caja por semana'],['ventas','Ventas y rentabilidad'],['caja','Caja y bancos'],['inventario','Inventario'],['precios','Autos para revisar precio'],['capital','Capital de los socios'],['gastos','Composición de gastos']];
 const FREQUENCIES={SEMANAL:{weeks:1,label:'Semanal'},QUINCENAL:{weeks:2,label:'Cada 2 semanas'},MENSUAL:{weeks:4,label:'Cada 4 semanas'}};
 
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -30,7 +30,7 @@ const pct=v=>Number.isFinite(v)?(Math.round(v*10)/10).toString().replace('.',','
 const plural=(n,a,b)=>n===1?a:b;
 
 // ---------- Configuración ----------
-function defaults(){return {enabled:false,frequency:'SEMANAL',weekday:1,hour:8,recipients:[],subject:'Oportunicars · Resumen semanal',note:'',sections:SECTIONS.reduce((o,s)=>{o[s[0]]=true;return o;},{}),version:0};}
+function defaults(){return {enabled:false,frequency:'SEMANAL',weekday:1,hour:8,recipients:[],subject:'Oportunicars · Resumen semanal',note:'',capitalRate:12,sections:SECTIONS.reduce((o,s)=>{o[s[0]]=true;return o;},{}),version:0};}
 const EMAIL=/^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[a-z]{2,}$/i;
 // Valida y normaliza (la usan el backend al guardar y la web antes de enviar).
 function normalize(input){
@@ -46,6 +46,8 @@ function normalize(input){
  if(out.enabled&&!out.recipients.some(r=>r.active))throw Error('Para activar el envío agrega al menos un destinatario activo.');
  out.subject=String(c.subject||'').trim().slice(0,120)||defaults().subject;
  out.note=String(c.note||'').trim().slice(0,600);
+ // Costo de capital: tasa anual (%) sobre lo invertido en cada auto propio mientras está en stock.
+ const rate=Number(String(c.capitalRate).replace(',','.'));if(!Number.isFinite(rate)||rate<0||rate>100)throw Error('Tasa de costo de capital inválida (0 a 100 %).');out.capitalRate=Math.round(rate*100)/100;
  const s=c.sections||{};SECTIONS.forEach(([k])=>{out.sections[k]=s[k]!==false;});
  out.version=Number(c.version)||0;
  return out;
@@ -84,6 +86,8 @@ function periodOf(today,weeks){const to=addDays(today,-1),from=addDays(to,-(7*we
 function cashOf(report){const known=(report.accounts||[]).filter(a=>Number.isFinite(a.balance));return known.length?known.reduce((s,a)=>s+a.balance,0):null;}
 const stockCars=cars=>cars.filter(c=>!c.sold&&c.status!=='RETIRADO');
 const carCost=c=>(c.purchase||0)+(c.preparation||0)+(c.parking||0);
+// Costo de capital de un auto propio: compra × tasa anual × días en stock / 365 (consignados no inmovilizan capital propio).
+const capitalOf=(c,rate)=>c.modality==='PROPIO'&&Number.isFinite(c.purchase)&&Number.isFinite(c.days)?Math.round(c.purchase*rate/100*c.days/365):0;
 
 function flows(D,from,to){
  const C0=core(),act=D.movements.filter(C0.active);
@@ -97,11 +101,12 @@ function flows(D,from,to){
  const cats={};outs.filter(m=>m.naturaleza==='GASTO').forEach(m=>{const k=m.categoria||'Sin categoría';cats[k]=(cats[k]||0)+Number(m.monto);});
  return {business,contributions:sum(aportes),purchases,fixed,other,exits:purchases+fixed+other,net:business-(purchases+fixed+other),categories:cats};
 }
-function salesOf(cars,from,to){
+function salesOf(cars,from,to,rate){
  const sold=cars.filter(c=>c.sold&&between(c.saleDate,from,to)).sort((a,b)=>a.saleDate.localeCompare(b.saleDate));
  const known=sold.filter(c=>c.result!==null);
  const profit=known.reduce((s,c)=>s+c.result,0),saleSum=known.reduce((s,c)=>s+(c.sale||0),0);
- return {count:sold.length,list:sold,profit,missing:sold.length-known.length,margin:saleSum>0?profit/saleSum*100:null,revenue:sold.reduce((s,c)=>s+(c.sale||0),0)};
+ const capital=known.reduce((s,c)=>s+capitalOf(c,rate||0),0);
+ return {count:sold.length,list:sold.map(c=>Object.assign({},c,{capital:capitalOf(c,rate||0)})),profit,capital,afterCapital:profit-capital,missing:sold.length-known.length,margin:saleSum>0?profit/saleSum*100:null,revenue:sold.reduce((s,c)=>s+(c.sale||0),0)};
 }
 // Arma todos los números del correo para la fecha de envío «today».
 function compute(D,today,cfg){
@@ -111,19 +116,28 @@ function compute(D,today,cfg){
  // Antes del arranque de la caja cuadrada no hay saldo comparable.
  const cash=P.to<cut?null:cashOf(now),cashPrev=prev.to<cut?null:cashOf(before);
  // Últimas 8 semanas (siempre semanales) para los gráficos.
- const series=[];for(let i=7;i>=0;i--){const to=addDays(P.to,-7*i),from=addDays(to,-6),f=flows(D,from,to),r=i===0?now:C0.reports(D,to),s=salesOf(r.cars,from,to);series.push({from,to,label:dm(from),business:f.business,exits:f.exits,contributions:f.contributions,cash:to<cut?null:cashOf(r),sales:s.count,profit:s.profit});}
+ const series=[];for(let i=7;i>=0;i--){const to=addDays(P.to,-7*i),from=addDays(to,-6),f=flows(D,from,to),r=i===0?now:C0.reports(D,to),s=salesOf(r.cars,from,to,cfg.capitalRate);series.push({from,to,label:dm(from),business:f.business,exits:f.exits,contributions:f.contributions,cash:to<cut?null:cashOf(r),sales:s.count,profit:s.profit});}
  const stock=stockCars(now.cars),own=stock.filter(c=>c.modality==='PROPIO'),cons=stock.filter(c=>c.modality==='CONSIGNADO');
  const ages=[['0–30 días',0,30,C.ok],['31–60 días',31,60,C.camel],['61–90 días',61,90,C.out],['Más de 90 días',91,1e9,C.bad]].map(([label,a,b,color])=>{const cs=stock.filter(c=>Number.isFinite(c.days)&&c.days>=a&&c.days<=b);return {label,color,count:cs.length,cost:cs.filter(c=>c.modality==='PROPIO').reduce((s,c)=>s+carCost(c),0)};});
  const noDays=stock.filter(c=>!Number.isFinite(c.days)).length;
  const stockCost=own.reduce((s,c)=>s+carCost(c),0),listed=own.reduce((s,c)=>s+(Number.isFinite(c.listPrice)&&c.listPrice>0?c.listPrice:carCost(c)),0);
  const daysKnown=stock.filter(c=>Number.isFinite(c.days)),avgDays=daysKnown.length?Math.round(daysKnown.reduce((s,c)=>s+c.days,0)/daysKnown.length):null;
  const entered=now.cars.filter(c=>between(c.entryDate,P.from,P.to)).length;
+ const rate=cfg.capitalRate||0,capitalStock=own.reduce((s,c)=>s+capitalOf(c,rate),0);
+ // Lo que cuesta mantener el capital invertido en el stock propio durante el período (compra × tasa × días del período / 365).
+ const capitalPeriod=Math.round(own.reduce((s,c)=>s+(Number.isFinite(c.purchase)?c.purchase:0),0)*rate/100*7*weeks/365);
+ // Alerta de precio: más de 60 días en stock, o margen esperado negativo al precio publicado (compra + gastos + estacionamiento + capital).
+ // No hay precio de mercado conectado: la alerta usa antigüedad y margen esperado, no comparables.
+ const priceAlerts=stock.map(c=>{const own=c.modality==='PROPIO',cap=capitalOf(c,rate),cost=own&&Number.isFinite(c.purchase)?carCost(c)+cap:null,list=Number.isFinite(c.listPrice)&&c.listPrice>0?c.listPrice:null,expected=cost!==null&&list!==null?list-cost:null;
+   const reason=expected!==null&&expected<0?'NEGATIVO':Number.isFinite(c.days)&&c.days>90?'MAS_90':Number.isFinite(c.days)&&c.days>60?'MAS_60':'';
+   return {label:c.label||c.id,days:c.days,modality:c.modality,list,cost,capital:cap,expected,margin:expected!==null&&list?expected/list*100:null,reason};})
+  .filter(a=>a.reason).sort((a,b)=>(a.reason==='NEGATIVO'?-1e6:0)-(b.reason==='NEGATIVO'?-1e6:0)||(b.days||0)-(a.days||0));
  const rest=(now.receivable||0)+(now.loanAsset||0)-(now.debt||0);
  const capital={total:(now.capital&&now.capital.total)||0,bySocio:(now.capital&&now.capital.bySocio)||{},atCost:(cash||0)+stockCost+rest,atList:(cash||0)+listed+rest};
  const fourFrom=addDays(P.to,-27),cats=flows(D,fourFrom,P.to).categories;
- return {cfg,today,period:P,prev,cur:{flows:flows(D,P.from,P.to),sales:salesOf(now.cars,P.from,P.to)},old:{flows:flows(D,prev.from,prev.to),sales:salesOf(before.cars,prev.from,prev.to)},
+ return {cfg,today,period:P,prev,cur:{flows:flows(D,P.from,P.to),sales:salesOf(now.cars,P.from,P.to,cfg.capitalRate)},old:{flows:flows(D,prev.from,prev.to),sales:salesOf(before.cars,prev.from,prev.to,cfg.capitalRate)},
   cash,cashPrev,accounts:(now.accounts||[]).map(a=>{const b=(before.accounts||[]).find(x=>x.id===a.id);return {name:a.name,balance:P.to<cut?null:a.balance,prev:b&&prev.to>=cut?b.balance:null};}),
-  stock:{count:stock.length,own:own.length,consigned:cons.length,cost:stockCost,listed,avgDays,ages,noDays,entered,old60:stock.filter(c=>Number.isFinite(c.days)&&c.days>60).length},
+  prices:priceAlerts,capitalRate:rate,stock:{capitalStock,capitalPeriod,count:stock.length,own:own.length,consigned:cons.length,cost:stockCost,listed,avgDays,ages,noDays,entered,old60:stock.filter(c=>Number.isFinite(c.days)&&c.days>60).length},
   receivable:now.receivable||0,debt:now.debt||0,capital,series,expenses:{from:fourFrom,to:P.to,cats}};
 }
 
@@ -193,6 +207,7 @@ function ventas(R){
  const top=columns(R.series,[['profit',C.camel,'Utilidad']],short,80);
  const body=!rows.length?'<p style="font:400 14px/1.5 '+SANS+';color:'+C.muted+';margin:0 0 6px">No hubo ventas en este período.</p>':
   '<table '+T+' width="100%">'+rows.map(c=>hbar(esc(c.label||c.id),Math.abs(c.result||0),maxP,c.result===null?C.track:c.result<0?C.bad:C.ok,c.result===null?'<span style="color:'+C.muted+'">Sin compra</span>':money(c.result)+'<div style="font:400 11px/1.3 '+SANS+';color:'+C.muted+'">'+(c.sale>0?pct(c.result/c.sale*100)+' de '+short(c.sale):'')+'</div>',(c.modality==='CONSIGNADO'?'Consignado':'Propio')+' · vendido el '+dm(c.saleDate)+(Number.isFinite(c.days)?' · '+c.days+' días en stock':''))).join('')+'</table>'+
+  (s.capital?'<table '+T+' width="100%" style="margin-top:10px;border-top:1px solid #f0e7d8"><tr><td style="padding:8px 0 0;font:400 13px/1.3 '+SANS+';color:'+C.ink+'">Costo de capital de lo vendido ('+pct(R.capitalRate)+' anual)</td><td align="right" style="padding:8px 0 0;font:500 13px/1.3 '+MONO+';color:'+C.ink+'">'+money(-s.capital)+'</td></tr><tr><td style="padding:4px 0 0;font:700 14px/1.3 '+SANS+';color:'+C.ink+'">Utilidad después de capital</td><td align="right" style="padding:4px 0 0;font:600 15px/1.3 '+MONO+';color:'+(s.afterCapital<0?C.bad:C.ok)+'">'+money(s.afterCapital)+'</td></tr></table>':'')+
   (s.missing?small(s.missing+' '+plural(s.missing,'venta','ventas')+' sin compra asignada en la caja: su utilidad no se suma todavía.'):'');
  return card(body+'<div style="font:600 13px/1.3 '+SANS+';color:'+C.ink+';margin:18px 0 8px">Utilidad por semana</div>'+top+small('Utilidad = venta cobrada − compra (o pago al dueño) − costos asignados al auto.'),
   'Ventas del período: '+s.count+' '+plural(s.count,'auto','autos'),'VENTAS Y RENTABILIDAD');
@@ -208,8 +223,21 @@ function inventario(R){
  const st=R.stock,max=Math.max(1,...st.ages.map(a=>a.count));
  return card('<table '+T+' width="100%"><tr>'+kpi('Propios',String(st.own),'al costo '+short(st.cost))+kpi('Consignados',String(st.consigned),st.entered?st.entered+' '+plural(st.entered,'ingreso','ingresos')+' en el período':'sin ingresos en el período')+'</tr></table>'+
   '<div style="font:600 13px/1.3 '+SANS+';color:'+C.ink+';margin:16px 0 4px">Antigüedad del stock</div><table '+T+' width="100%">'+st.ages.map(a=>hbar(esc(a.label),a.count,max,a.color,a.count+' '+plural(a.count,'auto','autos'),a.cost?'propios al costo '+short(a.cost):'')).join('')+'</table>'+
-  (st.noDays?small(st.noDays+' '+plural(st.noDays,'auto sin','autos sin')+' fecha de ingreso.'):'')+small('Promedio: '+(st.avgDays===null?'—':st.avgDays+' días')+' en stock. Sobre 30 días cada auto suma costo de estacionamiento.'),
+  (st.noDays?small(st.noDays+' '+plural(st.noDays,'auto sin','autos sin')+' fecha de ingreso.'):'')+(R.capitalRate?'<table '+T+' width="100%" style="margin-top:12px;background:#fffaf1;border:1px solid '+C.line+';border-radius:12px"><tr><td style="padding:12px 16px;font:400 13px/1.45 '+SANS+';color:'+C.ink+'"><b>Costo de capital del stock propio</b> ('+pct(R.capitalRate)+' anual)'+small('Lo que cuesta tener la plata invertida en estos autos.')+'</td><td align="right" style="padding:12px 16px;font:500 14px/1.4 '+MONO+';color:'+C.ink+';white-space:nowrap">'+short(st.capitalStock)+'<div style="font:400 11px/1.3 '+SANS+';color:'+C.muted+'">acumulado</div>'+short(st.capitalPeriod)+'<div style="font:400 11px/1.3 '+SANS+';color:'+C.muted+'">'+(R.period.weeks===1?'esta semana':'este período')+'</div></td></tr></table>':'')+
+  small('Promedio: '+(st.avgDays===null?'—':st.avgDays+' días')+' en stock. Sobre 30 días cada auto suma costo de estacionamiento.'),
   st.count+' '+plural(st.count,'auto','autos')+' en stock','INVENTARIO');
+}
+function precios(R){
+ const list=R.prices.slice(0,8);
+ if(!list.length)return card('<p style="font:400 14px/1.5 '+SANS+';color:'+C.ink+';margin:0">Ningún auto supera los 60 días ni tiene margen esperado negativo. '+chip('ok')+'</p>','Autos para revisar precio','ALERTA DE PRECIO');
+ const tag={NEGATIVO:['Margen negativo','bad'],MAS_90:['Ajustar precio','bad'],MAS_60:['Ajustar precio','warn']};
+ const rows=list.map(a=>{const t=tag[a.reason];
+  return '<tr><td style="padding:10px 0;border-bottom:1px solid #f0e7d8;font:600 13px/1.35 '+SANS+';color:'+C.ink+'">'+esc(a.label)+small((a.modality==='CONSIGNADO'?'Consignado':'Propio')+' · '+(Number.isFinite(a.days)?a.days+' días en stock':'sin fecha de ingreso')+(a.list?' · publicado '+short(a.list):''))+
+   (a.expected!==null?small('Costo '+short(a.cost)+(a.capital?' (incl. capital '+short(a.capital)+')':'')+' → margen esperado <b style="color:'+(a.expected<0?C.bad:C.ok)+'">'+short(a.expected)+(a.margin!==null?' · '+pct(a.margin):'')+'</b>'+(a.expected>0?' · espacio para rebajar sin perder: '+short(a.expected):''),C.muted):'')+
+   '</td><td align="right" valign="top" style="padding:10px 0 10px 10px;border-bottom:1px solid #f0e7d8">'+chip(t[1]).replace(/Atención|En revisión/,t[0])+'</td></tr>';}).join('');
+ return card('<table '+T+' width="100%">'+rows+'</table>'+(R.prices.length>list.length?small('Y '+(R.prices.length-list.length)+' más.'):'')+
+  small('Alerta cuando un auto supera los 60 días en stock o su margen esperado al precio publicado es negativo. Aún no hay precio de mercado conectado: la alerta no compara con avisos similares.'),
+  R.prices.length+' '+plural(R.prices.length,'auto','autos')+' para revisar precio','ALERTA DE PRECIO');
 }
 function capital(R){
  const k=R.capital;if(!k.total)return '';
@@ -245,7 +273,7 @@ function render(R,opts){
  const body=[
   card(kpis,'','LOS NÚMEROS DEL PERÍODO'),
   sec.semaforo!==false?semaforo(R):'',sec.flujo!==false?flujo(R):'',sec.ventas!==false?ventas(R):'',sec.caja!==false?caja(R):'',
-  sec.inventario!==false?inventario(R):'',sec.capital!==false?capital(R):'',sec.gastos!==false?gastos(R):''].join('');
+  sec.inventario!==false?inventario(R):'',sec.precios!==false?precios(R):'',sec.capital!==false?capital(R):'',sec.gastos!==false?gastos(R):''].join('');
  const url=opts.url||'https://admin.oportunicars.cl';
  const pre=esc(P.label+' · '+(cs.count?cs.count+' '+plural(cs.count,'venta','ventas')+' · ':'')+'caja '+short(R.cash));
  return '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light"><title>'+esc(cfg.subject)+'</title>'+

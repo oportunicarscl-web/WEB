@@ -42,6 +42,7 @@ function form(){
   '<h3>Cuándo</h3><div class="ml-grid3"><label>Frecuencia<select id="ml-freq">'+freqs+'</select></label><label>Día<select id="ml-day">'+days+'</select></label><label>Hora (Chile)<select id="ml-hour">'+hours+'</select></label></div>'+
   '<p class="ml-hint">Resume los '+(k.FREQUENCIES[c.frequency].weeks===1?'7 días':k.FREQUENCIES[c.frequency].weeks*7+' días')+' que terminan el día anterior al envío. Enviado un lunes, es la semana lunes a domingo anterior.</p>'+
   '<h3>Contenido</h3><label class="ml-block">Asunto<input id="ml-subject" value="'+esc(c.subject)+'" maxlength="120"></label>'+
+  '<label class="ml-block">Tasa anual de costo de capital (%)<input id="ml-rate" type="number" min="0" max="100" step="0.5" value="'+esc(c.capitalRate)+'"><small class="ml-hint">Se cobra sobre la compra de cada auto propio por los días en stock. Se usa en «Utilidad después de capital» y en las alertas de precio. 0 = no considerar.</small></label>'+
   '<label class="ml-block">Mensaje al inicio (opcional)<textarea id="ml-note" rows="2" maxlength="600" placeholder="Ej.: Esta semana cerramos dos ventas importantes.">'+esc(c.note)+'</textarea></label>'+
   '<fieldset class="ml-sections"><legend>Secciones</legend>'+k.SECTIONS.map(([key,label])=>'<label><input type="checkbox" data-ml-sec="'+key+'" '+(c.sections[key]!==false?'checked':'')+'> '+esc(label)+'</label>').join('')+'<small>Los números del período (KPI) siempre van.</small></fieldset>'+
   '<div class="ml-actions"><button id="ml-save" class="ml-primary" '+(s.busy?'disabled':'')+'>'+(s.dirty?'Guardar cambios':'Guardado')+'</button><button id="ml-test" '+(s.busy?'disabled':'')+'>Enviar prueba a mí</button><button id="ml-all" '+(s.busy||s.dirty?'disabled':'')+' title="'+(s.dirty?'Guarda primero':'')+'">Enviar ahora a destinatarios</button></div>'+
@@ -98,6 +99,7 @@ function wire(el){
  $('#ml-hour').onchange=e=>{c.hour=Number(e.target.value);changed(el,true);};
  $('#ml-subject').oninput=e=>{c.subject=e.target.value;changed(el,false);};
  $('#ml-note').oninput=e=>{c.note=e.target.value;changed(el,false);};
+ $('#ml-rate').oninput=e=>{c.capitalRate=e.target.value===''?0:Number(e.target.value);changed(el,false);};
  el.querySelectorAll('[data-ml-sec]').forEach(i=>i.onchange=()=>{c.sections[i.dataset.mlSec]=i.checked;changed(el,false);});
  $('#ml-save').onclick=()=>{if(!s.dirty)return;c.recipients=c.recipients.filter(r=>String(r.email||'').trim()||String(r.name||'').trim());const v=validDraft();if(!v){draw(el);return;}
   run(el,'mailSave',{config:v,expectedVersion:Number(s.data&&s.data.config&&s.data.config.version||0)},'Configuración guardada.');};

@@ -11,7 +11,9 @@ Período: los 7 días (o 14/28) que terminan el día anterior al envío; enviado
 - Flujo de caja de las últimas 8 semanas (ingresos del negocio, salidas, aportes de socios aparte).
 - Ventas del período con utilidad y margen por auto, y utilidad por semana.
 - Caja por cuenta y caja total al cierre de cada semana (desde el 15-oct-2026, igual que Caja y bancos).
-- Inventario: propios/consignados, antigüedad del stock.
+- Inventario: propios/consignados, antigüedad del stock y costo de capital del stock propio (compra × tasa anual × días / 365; tasa configurable en Correos, 12 % por defecto).
+- Autos para revisar precio: más de 60 días en stock o margen esperado negativo al precio publicado (compra + gastos + estacionamiento + capital). No hay precio de mercado conectado; la alerta no compara con avisos similares.
+- En ventas: utilidad después del costo de capital de lo vendido.
 - Capital de los socios: cuánto se recupera si hoy se cierra y se vende todo.
 - Composición de gastos de las últimas 4 semanas.
 
