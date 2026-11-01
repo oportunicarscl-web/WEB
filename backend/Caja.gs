@@ -71,12 +71,18 @@ function ocCellValue_(field,value){
   if(typeof value==='string'&&(/^fecha(?:_|$)/.test(field)||/_at$/.test(field))&&/^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value)){const d=new Date(value.length===10?value+'T12:00:00Z':value);if(!isNaN(d.getTime()))return d;}
   return value;
 }
+// Escribe SOLO las columnas del patch (no reescribe la fila entera). Reescribir la fila hacía que Sheets
+// convirtiera en número textos como el docto «000000000» y la validación de la hoja rechazaba el guardado.
 function ocPatchRow_(t,row,patch){
   Object.keys(patch).forEach(k=>{if(t.headers.indexOf(k)<0)throw Error('Falta la columna '+k+'.');});
-  const range=t.sheet.getRange(row,1,1,t.headers.length),values=range.getValues()[0],formulas=range.getFormulas()[0];
-  const next=t.headers.map((h,i)=>{if(!Object.prototype.hasOwnProperty.call(patch,h)&&formulas[i])return formulas[i];const v=Object.prototype.hasOwnProperty.call(patch,h)?patch[h]:values[i];return ocLiteral_(ocCellValue_(h,v));});
-  range.setValues([next]);SpreadsheetApp.flush();
+  const cols=Object.keys(patch).map(k=>t.headers.indexOf(k)).sort((a,b)=>a-b);
+  for(let i=0;i<cols.length;){let j=i;while(j+1<cols.length&&cols[j+1]===cols[j]+1)j++;
+    const vals=cols.slice(i,j+1).map(c=>ocCellOut_(t.headers[c],patch[t.headers[c]]));
+    t.sheet.getRange(row,cols[i]+1,1,vals.length).setValues([vals]);i=j+1;}
+  SpreadsheetApp.flush();
 }
+// Los textos que parecen número (doctos, referencias) se guardan como texto.
+function ocCellOut_(h,v){v=ocCellValue_(h,v);if(typeof v==='string'&&/^[0-9][0-9.,]*$/.test(v))return "'"+v;return ocLiteral_(v);}
 function ocClassify_(p,actor){
   const t=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),matches=t.rows.filter(r=>r.movimiento_id===p.id&&ocProd_(r));
   if(matches.length!==1)throw Error('Movimiento no encontrado o duplicado.');const r=matches[0];

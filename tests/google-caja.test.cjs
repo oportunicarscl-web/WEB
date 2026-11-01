@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 function setup(){
  const tables={};
- function sheet(name,rows){const headers=Object.keys(rows[0]);const data=[headers,...rows.map(r=>headers.map(h=>r[h]))];const s={data,getLastRow:()=>data.length,getDataRange:()=>({getValues:()=>data.map(r=>r.slice())}),getRange:(row,col,n,width)=>({getValues:()=>[Array.from({length:width},(_,i)=>data[row-1]?.[col-1+i]??'')],getFormulas:()=>[Array(width).fill('')],setValues:values=>{data[row-1]=values[0].slice();}})};tables[name]=s;return s;}
+ function sheet(name,rows){const headers=Object.keys(rows[0]);const data=[headers,...rows.map(r=>headers.map(h=>r[h]))];const s={data,getLastRow:()=>data.length,getDataRange:()=>({getValues:()=>data.map(r=>r.slice())}),getRange:(row,col,n,width)=>({getValues:()=>[Array.from({length:width},(_,i)=>data[row-1]?.[col-1+i]??'')],getFormulas:()=>[Array(width).fill('')],setValues:values=>{if(!data[row-1])data[row-1]=[];values[0].forEach((v,i)=>{data[row-1][col-1+i]=v;});}})};tables[name]=s;return s;}
  sheet('USUARIOS',[{auth_user_id:'user1',nombre:'Operario',email:'user@example.test',rol:'OPERACIONES',habilitado:'SI',ambiente:'PRODUCCION',estado_registro:'ACTIVO'}]);
  sheet('CONCEPTOS_CAJA',[{concepto_id:'ARREGLO',nombre:'Arreglo',categoria:'Vehículos',naturaleza:'COSTO',tipo_costo:'VARIABLE',recurrente:'NO',operacion_auto:'ARREGLO',habilitado:'SI',version:1}]);
  sheet('VEHICULOS',[{vehiculo_id:'car1',patente:'TEST01',marca:'Marca',modelo:'Modelo',version_vehiculo:'',ambiente:'PRODUCCION',estado_registro:'ACTIVO'}]);
@@ -71,4 +71,11 @@ test('Ficha repetida en la hoja (ID numérico): vale la más reciente de cada au
  const ctx={};ctx.window=ctx;vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../google-caja.js'),'utf8'),ctx);const {latestPerCar}=ctx.OCGoogleCaja;
  const rows=[{vehiculo_id:103,estado_auto:'PREPARACION',updated_at:'2026-10-20'},{vehiculo_id:103,estado_auto:'DISPONIBLE',costo_compra:4000000,updated_at:'2026-10-25T03:40:55Z'},{vehiculo_id:'abc',estado_auto:'DISPONIBLE',updated_at:'2026-10-20'}];
  const out=latestPerCar(rows);assert.equal(out.length,2);const m=out.find(r=>r.vehiculo_id==='103');assert.equal(m.estado_auto,'DISPONIBLE');assert.equal(m.costo_compra,4000000);
+});
+test('Guardar un movimiento no convierte en número los doctos con ceros (solo escribe las columnas cambiadas)',()=>{
+ const {context}=setup();
+ assert.equal(context.ocCellOut_('referencia','000000000'),"'000000000");
+ assert.equal(context.ocCellOut_('referencia','019331988'),"'019331988");
+ assert.equal(context.ocCellOut_('monto',5000),5000);
+ assert.equal(context.ocCellOut_('descripcion','TEF 76051222-2'),'TEF 76051222-2');
 });

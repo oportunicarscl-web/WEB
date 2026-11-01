@@ -173,7 +173,7 @@ async function bulkApply(el){
  for(const id of ids){const m=s.movements.find(x=>x.id===id);if(!m)continue;s.message=`Asignando ${n+1} de ${ids.length}…`;draw(el);
   try{const next=root.OCCaja.classify(m,c,v?String(v.id):(m.classification?.vehicleId||null),s.inventory.map(x=>({...x,id:x.id})));
    const saved=await config.saveMovement(next);replace({...(saved||next),saving:false});n++;s.sel.delete(id);}
-  catch(e){s.message=e.message+` (${n} de ${ids.length} asignados)`;break;}}
+  catch(e){s.message=e.message+` (${n} de ${ids.length} asignados)`;s.err=s.message;break;}}
  s.busy=false;if(n===ids.length){s.message=`${n} movimiento${n===1?'':'s'} asignado${n===1?'':'s'} a «${c.name}»${v?' · '+carLabel(v):''}.`;s.bulk={concept:'',car:''};}draw(el);
 }
 async function bulkConfirm(el){
@@ -199,7 +199,7 @@ function draw(el){
  const tabs=s.tab;if(!tabs[mode])tabs[mode]=todo.length?'completar':'movimientos';
  if(tabs[mode]==='completar'&&!todo.length&&done.length)tabs[mode]='movimientos';
  const tab=tabs[mode];
- const list=tab==='completar'?todo:tab==='atajos'?quick:done;
+ const full=tab==='completar'?todo:tab==='atajos'?quick:done,list=searchFilter(full);
  const balOf=m=>bal[m.accountId];
  const needSetup=!hist&&infos.some(a=>a.opening===null);
  const completable=todo.filter(m=>{const x=missing(m);return x.length===1&&x[0]==='Importe';});
@@ -213,28 +213,40 @@ function draw(el){
  ${tab==='completar'&&completable.length>1?`<p><button id="cn-confirm-all">Confirmar ${completable.length} importes ya completos</button></p>`:''}
  <datalist id="cn-cars">${[...carIndex().keys()].map(l=>`<option value="${esc(l)}"></option>`).join('')}</datalist>
  ${tab==='atajos'?'':bulkBar()||`<p class="cn-bulk-hint"><small>Marca la casilla de varios movimientos del mismo signo para asignarlos en conjunto${list.length?` · <button id="cn-pick-all" class="lq-link">seleccionar los ${Math.min(list.length,s.limit)} visibles del signo del primero</button>`:''}.</small></p>`}
- <div class="oc-caja-list">${list.slice(0,s.limit).map(m=>rowMarkup(m,balOf(m),tab)).join('')||'<p>Nada por aquí.</p>'}</div>
- ${list.length>s.limit?`<p><button id="cn-more">Mostrar más (${list.length-s.limit})</button></p>`:''}`;
+ <div class="cn-findbar"><input id="cn-q" type="search" inputmode="search" placeholder="Buscar por monto (ej. 5000000 o 5.000.000) o por texto" value="${esc(s.q||'')}" autocomplete="off"> <small>${s.q?`${list.length} de ${full.length}`:`${full.length} movimientos`}</small>${list.length>s.limit?` <button id="cn-all">Ver todos (${list.length})</button>`:''}</div>
+ <div class="oc-caja-list">${list.slice(0,s.limit).map(m=>rowMarkup(m,balOf(m),tab)).join('')||`<p>${s.q?'Ningún movimiento coincide con la búsqueda.':'Nada por aquí.'}</p>`}</div>
+ ${list.length>s.limit?`<p><button id="cn-more">Mostrar más (${Math.min(100,list.length-s.limit)})</button> <button id="cn-all2">Ver todos (${list.length})</button></p>`:''}
+ ${s.err?`<div class="cn-toast" role="alert"><b>No se guardó.</b> ${esc(s.err)} <button id="cn-err-x" aria-label="Cerrar">✕</button></div>`:''}`;
  wire(el);
+}
+// Buscador: con solo números busca por monto (todo monto que contenga esos dígitos); con texto busca en descripción, cuenta y concepto.
+function searchFilter(list){
+ const q=String(s&&s.q||'').trim();if(!q)return list;
+ const digits=q.replace(/[$.\s]/g,'').replace(/,\d{1,2}$/,'');
+ if(/^\d+$/.test(digits))return list.filter(m=>String(m.amount??'').includes(digits));
+ const t=q.toLowerCase();return list.filter(m=>[m.description,m.account,m.classification&&m.classification.name].some(x=>String(x||'').toLowerCase().includes(t)));
 }
 function replace(m){s.movements=s.movements.map(x=>x.id===m.id?m:x);}
 async function persist(el,next){
  const prev=s.movements.find(x=>x.id===next.id);if(!prev||prev.saving)return;
  const undo=config.applyLocal?config.applyLocal(next):()=>{};
  replace({...next,saving:true});draw(el);
- try{const saved=await config.saveMovement(next);replace({...(saved||next),saving:false});s.editing='';s.message='Guardado.';}
- catch(e){undo();replace(prev);s.message=e.message;}
+ try{const saved=await config.saveMovement(next);replace({...(saved||next),saving:false});s.editing='';s.message='Guardado.';s.err='';}
+ catch(e){undo();replace(prev);s.message=e.message;s.err=e.message;}
  draw(el);
 }
 async function run(el,m,fn){
  if(m.saving)return;replace({...m,saving:true});draw(el);
  try{const next=await fn();replace({...next,saving:false});s.editing='';s.message='Guardado.';}
- catch(e){replace(m);s.message=e.message;}
+ catch(e){replace(m);s.message=e.message;s.err=e.message;}
  draw(el);
 }
 function wire(el){
  el.querySelectorAll('[data-cn-tab]').forEach(b=>b.onclick=()=>{s.tab[mode]=b.dataset.cnTab;s.limit=80;draw(el);});
  const more=el.querySelector('#cn-more');if(more)more.onclick=()=>{s.limit+=100;draw(el);};
+ ['#cn-all','#cn-all2'].forEach(id=>{const b=el.querySelector(id);if(b)b.onclick=()=>{s.limit=1e9;draw(el);};});
+ const q=el.querySelector('#cn-q');if(q){q.oninput=()=>{s.q=q.value;const pos=q.selectionStart;draw(el);const n=el.querySelector('#cn-q');if(n){n.focus();try{n.setSelectionRange(pos,pos);}catch{}}};}
+ const ex=el.querySelector('#cn-err-x');if(ex)ex.onclick=()=>{s.err='';draw(el);};
  const mp=el.querySelector('#cn-mp');if(mp)mp.onclick=()=>syncMp(el);
  const setupBtn=el.querySelector('#cn-setup');if(setupBtn)setupBtn.onclick=()=>setupDialog(el);
  el.querySelectorAll('[data-acc]').forEach(c=>{const tgl=()=>{const id=c.dataset.acc,ids=accountsInfo().map(a=>String(a.id));if(s.off.has(id))s.off.delete(id);else{s.off.add(id);if(ids.every(x=>s.off.has(x)))s.off.clear();}s.limit=80;draw(el);};c.onclick=tgl;c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tgl();}};});
