@@ -1,6 +1,7 @@
 // Script properties: OC_MAESTROS_ID, OC_FINANZAS_ID, OC_SUPABASE_URL, OC_SUPABASE_KEY.
 // Deploy as owner. Every data request is authenticated against Supabase AND USUARIOS.
-function doGet() { return ocJson_({ok:true,service:'Oportunicars Sistema de Gestión',version:3}); }
+// GET: estado del servicio, o retorno de la autorización de Lark (Correos) con ?code=&state=.
+function doGet(e) { if(typeof ocMailCallback_==='function'){const r=ocMailCallback_(e);if(r)return r;} return ocJson_({ok:true,service:'Oportunicars Sistema de Gestión',version:4}); }
 function doPost(e) {
   try {
     ocAccountCache_=null;

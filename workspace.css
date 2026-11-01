@@ -289,3 +289,14 @@ body.workspace-open{
 #oc-workspace #oc-mail input[type=checkbox]{min-height:0;flex:none}
 #oc-mail .ml-layout>div{min-width:0}
 #oc-workspace #oc-mail .ml-recipients .lq-link{padding:0;min-height:0;border:0;background:none;width:auto}
+#oc-mail .ml-channels{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#oc-mail .ml-ch{display:flex;gap:10px;align-items:flex-start;border:1px solid #e3d6bf;border-radius:10px;padding:12px 14px;background:white;cursor:pointer}
+#oc-mail .ml-ch small{display:block;color:#82735d;font-size:12px;margin-top:2px}#oc-mail .ml-ch-on{border-color:#8c6d3f;background:#fffaf1;box-shadow:0 0 0 1px #8c6d3f}
+#oc-workspace #oc-mail .ml-ch input{width:18px;height:18px;min-height:0;accent-color:#8c6d3f;margin-top:2px;flex:none}
+#oc-mail .ml-step{border-left:3px solid #e3d6bf;padding:2px 0 2px 14px;margin:14px 0}#oc-mail .ml-step ol{margin:6px 0;padding-left:20px;font-size:13px;line-height:1.7}
+#oc-mail .ml-step-t{font-weight:700;margin:0 0 4px}#oc-mail .ml-step-t span{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:11px;background:#3b2f21;color:#fff9ed;font-size:12px;margin-right:6px}
+#oc-mail .ml-step code{background:#f2e8d8;padding:1px 6px;border-radius:5px;font-size:12px;overflow-wrap:anywhere}
+#oc-mail .ml-copy{display:flex;gap:8px;align-items:center;margin-top:4px}#oc-workspace #oc-mail .ml-copy button{min-height:0;padding:4px 10px;font-size:12px}
+#oc-mail .ml-step .ml-actions{margin-top:10px}
+@media(max-width:600px){#oc-mail .ml-channels{grid-template-columns:1fr}}
+#oc-mail .ml-lark{grid-template-columns:1fr 1fr}#oc-mail .ml-lark label:first-child{grid-column:1/-1}

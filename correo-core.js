@@ -30,7 +30,7 @@ const pct=v=>Number.isFinite(v)?(Math.round(v*10)/10).toString().replace('.',','
 const plural=(n,a,b)=>n===1?a:b;
 
 // ---------- Configuración ----------
-function defaults(){return {enabled:false,frequency:'SEMANAL',weekday:1,hour:8,recipients:[],subject:'Oportunicars · Resumen semanal',note:'',capitalRate:12,sections:SECTIONS.reduce((o,s)=>{o[s[0]]=true;return o;},{}),version:0};}
+function defaults(){return {enabled:false,frequency:'SEMANAL',weekday:1,hour:8,recipients:[],subject:'Oportunicars · Resumen semanal',note:'',capitalRate:12,channel:'GMAIL',sections:SECTIONS.reduce((o,s)=>{o[s[0]]=true;return o;},{}),version:0};}
 const EMAIL=/^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[a-z]{2,}$/i;
 // Valida y normaliza (la usan el backend al guardar y la web antes de enviar).
 function normalize(input){
@@ -47,6 +47,7 @@ function normalize(input){
  out.subject=String(c.subject||'').trim().slice(0,120)||defaults().subject;
  out.note=String(c.note||'').trim().slice(0,600);
  // Costo de capital: tasa anual (%) sobre lo invertido en cada auto propio mientras está en stock.
+ if(['GMAIL','LARK'].indexOf(c.channel)<0)throw Error('Canal de envío inválido.');out.channel=c.channel;
  const rate=Number(String(c.capitalRate).replace(',','.'));if(!Number.isFinite(rate)||rate<0||rate>100)throw Error('Tasa de costo de capital inválida (0 a 100 %).');out.capitalRate=Math.round(rate*100)/100;
  const s=c.sections||{};SECTIONS.forEach(([k])=>{out.sections[k]=s[k]!==false;});
  out.version=Number(c.version)||0;
@@ -306,6 +307,7 @@ function build(D,today,cfg,opts){
  const c=normalize(cfg||defaults()),R=compute(D,today,c);
  return {subject:c.subject+' · '+(R.period.weeks===1?'semana':'período')+' del '+dm(R.period.from)+' al '+dm(R.period.to),html:render(R,opts),text:text(R),period:R.period,data:R};
 }
-const api={CASH_START,SECTIONS,FREQUENCIES,DIAS,defaults,normalize,due,nextRun,isoDow,prepare,periodOf,compute,build,render,money,short};
+const CHANNELS={GMAIL:'Gmail (cuenta Google del sistema)',LARK:'Lark Mail'};
+const api={CHANNELS,CASH_START,SECTIONS,FREQUENCIES,DIAS,defaults,normalize,due,nextRun,isoDow,prepare,periodOf,compute,build,render,money,short};
 if(typeof module!=='undefined')module.exports=api;root.OCCorreoCore=api;
 })(typeof globalThis==='undefined'?this:globalThis);

@@ -26,3 +26,12 @@ No incluye nada operativo (movimientos por clasificar, tareas, pendientes). Los 
 - Ejecutar una vez `activarCorreosSemanales()` desde el editor: autoriza el envío de correo y crea el disparador horario `enviarCorreosProgramados`, que envía solo en el día/hora configurados y una vez por día (cada N semanas si corresponde).
 - Propiedades: `OC_MAIL_CONFIG` (configuración), `OC_MAIL_LAST` (último envío automático), `OC_MAIL_LOG` (últimos 30 envíos). Cambios de configuración quedan en AUDITORIA_SISTEMA.
 - El remitente es la cuenta de Google dueña del script (cuota diaria de MailApp).
+
+## Canal de envío (se elige en Correos)
+
+- **Gmail**: `MailApp` con la cuenta Google dueña del script. Si falta el permiso `script.send_mail`, Correos muestra «Falta autorizar» y el botón **Autorizar Gmail** (enlace de `ScriptApp.getAuthorizationInfo`); se abre con la cuenta dueña del sistema, se aceptan permisos y se pulsa **Comprobar**.
+- **Lark Mail**: API `POST /open-apis/mail/v1/user_mailboxes/me/messages/send`, que exige `user_access_token` (OAuth de usuario). Onboarding en 3 pasos dentro de Correos:
+  1. App personalizada en Lark Developer con permisos `mail:user_mailbox.message:send` y `offline_access`, la URL del web app (la misma de `google-config.js`) en Redirect URLs, «Refresh user_access_token» activado y versión publicada.
+  2. App ID + App Secret + región (Lark/Feishu). El secret queda en `OC_LARK_MAIL` (propiedades del script) y nunca vuelve al navegador.
+  3. **Conectar cuenta Lark**: autoriza en Lark y vuelve a `doGet` (`ocMailCallback_`), que canjea el código y guarda el refresh token.
+- El refresh token de Lark rota en cada uso; el disparador horario lo renueva cada 2 días para que no venza entre envíos. Si Lark lo revoca o vence, Correos pide reconectar.
