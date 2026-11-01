@@ -108,7 +108,7 @@ function ocMovSplit_(p,actor){
  const out=parts.map((monto,i)=>{
   const id=base+'-D'+(i+1)+tag;
   const row={movimiento_id:id,cuenta_id:r.cuenta_id,fecha_operacion:r.fecha_operacion,fecha_original:r.fecha_original||'',moneda:r.moneda||'CLP',direccion:r.direccion||'',monto:monto,
-   descripcion:'✂ '+(i+1)+'/'+n+' · '+desc,referencia:base,hash_origen:'DIV|'+id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'DIVISION',calidad:r.calidad||'',
+   descripcion:'✂ '+(i+1)+'/'+n+' · '+desc,referencia:base,hash_origen:'DIV|'+id,ambiente:'PRODUCCION',estado_registro:'ACTIVO',origen:'CALCULO',calidad:r.calidad||'',
    monto_confirmado:r.monto_confirmado||'NO',incluir_en_saldo:r.incluir_en_saldo||'NO',tipo_fuente:r.tipo_fuente||'',estado_fuente:r.estado_fuente||'',estado_importacion:'DIVISION',
    concepto_id:keepConcept?r.concepto_id:'',concepto_nombre:keepConcept?r.concepto_nombre:'',concepto_version:keepConcept?r.concepto_version:'',categoria:keepConcept?r.categoria:'',naturaleza:keepConcept?r.naturaleza:'',tipo_costo:keepConcept?r.tipo_costo:'',recurrente:keepConcept?r.recurrente:'',operacion_auto:keepConcept?r.operacion_auto:'',vehiculo_id:'',
    estado_clasificacion:!keepConcept?'PENDIENTE':r.operacion_auto?'POR_ASIGNAR_AUTO':'CLASIFICADO',observacion:'División '+(i+1)+' de '+n+' de '+base,version:1,created_at:now,created_by:actor.id,updated_at:now,updated_by:actor.id};
