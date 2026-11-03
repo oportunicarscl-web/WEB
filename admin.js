@@ -86,7 +86,7 @@ function analyze(){
   if(!s.accountTouched){const a=C().accountFor(fmt,accounts());if(a)s.account=a.id;}
   const r=C().parse(s.text,{format:fmt.id,today:new Date().toLocaleDateString('sv-SE',{timeZone:'America/Santiago'})});
   const all=root.OCCajaNueva?.snapshot?.()?.movements||[];
-  C().matchExisting(r.rows,all.filter(m=>String(m.accountId)===String(s.account)&&Number.isFinite(m.amount)));
+  C().matchExisting(r.rows,all.filter(m=>String(m.accountId)===String(s.account)&&Number.isFinite(m.amount)).map(m=>({...m,op:String(m.doc||'').replace(/^MP-/,'')})));
   s.cart=r;return true;
  }
  if(!s.accountTouched){const a=C().accountFor(fmt,accounts());if(a)s.account=a.id;}
@@ -110,7 +110,7 @@ function mpView(){
  const r=s.cart,acc=accounts().find(a=>a.id===s.account),fresh=r.rows.filter(x=>x.state==='new'),dups=r.rows.filter(x=>x.state==='dup').length,skip=r.rows.filter(x=>x.state==='skip').length;
  const why=!isMpAccount(acc)?'Elige arriba la cuenta Mercado Pago.':!fresh.length?'Todos estos movimientos ya estaban en la cuenta.':'',ready=!why&&!s.busy;
  const d=r.rows.map(x=>x.date).filter(Boolean).sort();
- const chip=x=>x.state==='skip'?`<span class="oc-chip oc-chip-bad">Omitido: ${esc(x.skip)}</span>`:x.state==='dup'?`<span class="oc-chip" title="${esc(fmtDate(x.match.date)+' · '+x.match.description)}">Ya está</span>`:'<span class="oc-chip oc-chip-ok">Nueva</span>';
+ const chip=x=>x.state==='skip'?`<span class="oc-chip oc-chip-bad">Omitido: ${esc(x.skip)}</span>`:x.state==='dup'?`<span class="oc-chip${x.dirFix?' oc-chip-warn':''}" title="${esc(fmtDate(x.match.date)+' · '+x.match.description)}">${x.dirFix?'Ya está · sentido al revés en el sistema':'Ya está'}</span>`:'<span class="oc-chip oc-chip-ok">Nueva</span>';
  return `<div class="oc-caja-form">${accountSelect()}</div>
  <p><b>Formato: ${esc(r.format.name)}</b> · ${r.rows.length} movimientos${d.length?` del ${esc(fmtDate(d[0]))} al ${esc(fmtDate(d[d.length-1]))}`:''} · <span class="oc-in">Ingresos +${money(r.totals.in)}</span> · <span class="oc-out">Egresos −${money(r.totals.out)}</span></p>
  <p><small>Mercado Pago no muestra el año: se toma el año actual (y el anterior al pasar de enero a diciembre). Revisa las fechas antes de importar.</small></p>
@@ -131,7 +131,7 @@ async function saveMp(el){
  s.busy=true;s.message='Importando movimientos de Mercado Pago…';draw(el);
  try{
   // Se envían todos los aprobados (no solo los nuevos): Google vuelve a cruzar contra la planilla y decide.
-  const rows=s.cart.rows.filter(x=>x.state!=='skip').map(x=>({date:x.date,time:x.time,direction:x.direction,amount:x.amount,description:x.description,method:x.method}));
+  const rows=s.cart.rows.filter(x=>x.state!=='skip').map(x=>({date:x.date,time:x.time,direction:x.direction,amount:x.amount,description:x.description,method:x.method,op:x.op||''}));
   const r=await config.mpActivityImport(s.account,s.requestId,rows);
   root.OCCajaNueva?.addMovements(r.saved);
   s.message=`${r.saved.length} movimientos importados${r.skipped?` · ${r.skipped} ya estaban`:''}. Quedan en «Por completar» para asignar concepto y auto.`;

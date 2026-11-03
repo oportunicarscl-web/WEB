@@ -64,7 +64,7 @@ const scotiabank={
 // Solo se importan los «Aprobado»; los demás se muestran como omitidos.
 const MESES={enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
 const MP_DAY=/^(\d{1,2})\s+de\s+([a-záéíóú]+)(?:\s+(?:de\s+|del\s+)?(\d{4}))?$/i,MP_TIME=/^\d{1,2}:\d{2}$/;
-const MP_STATUS=/^(aprobado|rechazado|cancelado|devuelto|reembolsado|pendiente|en proceso|en mediaci[oó]n|contracargo|anulado|expirado)$/i;
+const MP_STATUS=/^(aprobado|devuelto parcialmente|rechazado|cancelado|devuelto|reembolsado|pendiente|en proceso|en mediaci[oó]n|contracargo|anulado|expirado)$/i;
 const shiftDay=(iso,n)=>{const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 const mercadopago={
  id:'mercadopago',name:'Mercado Pago · Actividad',account:/mercado/i,noBalance:true,
@@ -93,19 +93,29 @@ const mercadopago={
    }
    if(!amount){ignored++;continue;}
    const info=mid.filter(t=>t.split(name).join('').trim()!==''),status=info.find(t=>MP_STATUS.test(t))||'',rest=info.filter(t=>t!==status);
-   const type=rest[0]||'',method=rest.slice(1).join(' · ');
-   rows.push({date:day,time:l,counterpart:name,type,method,status,description:(type?type+' · ':'')+name,doc:'',amount,balance:null,direction:sign==='+'?'ENTRADA':'SALIDA'});
+   // «Operación 1234» es el número de operación de Mercado Pago (el mismo de la API): sirve para cruzar exacto.
+   const opLine=rest.find(t=>/^Operaci[oó]n \d{6,}$/.test(t)),op=opLine?opLine.replace(/\D/g,''):'',words=rest.filter(t=>t!==opLine);
+   const type=words[0]||'',method=words.slice(1).join(' · ');
+   const description=[type,name].filter(Boolean).join(' · ')+(op?' · Op. '+op:'');
+   rows.push({date:day,time:l,counterpart:name,type,method,status,description,doc:op,op,amount,balance:null,direction:sign==='+'?'ENTRADA':'SALIDA'});
    i=j;
   }
   return {rows,ignored};
  }
 };
-// Cruza lo pegado con lo que ya está en la cuenta (sincronizado por la API o pegado antes): mismo sentido y monto,
+// Cruza lo pegado con lo que ya está en la cuenta (sincronizado por la API o pegado antes). Primero por número de operación
+// (la API guarda las ventas con link netas de comisión: el monto no calza). Después mismo sentido y monto,
 // primero el mismo día y después ±1 día. Cada movimiento existente se usa una sola vez (5 transferencias iguales = 5).
 function matchExisting(rows,existing){
  const used=new Set(),dd=(a,b)=>Math.abs(Date.parse(a)-Date.parse(b))/864e5,pool=(existing||[]).filter(e=>e&&e.date);
- [0,1].forEach(tol=>rows.forEach(r=>{if(r.skip||r.match)return;const m=pool.find(e=>!used.has(e.id)&&e.direction===r.direction&&e.amount===r.amount&&dd(e.date,r.date)<=tol);if(m){used.add(m.id);r.match=m;}}));
- rows.forEach(r=>{r.state=r.skip?'skip':r.match?'dup':'new';});
+ const pass=(how,ok)=>rows.forEach(r=>{if(r.skip||r.match)return;const m=pool.find(e=>!used.has(e.id)&&ok(r,e));if(m){used.add(m.id);r.match=m;r.how=how;}});
+ const same=(r,e)=>!(r.op&&e.op&&e.op!==r.op)&&e.amount===r.amount,dir=(r,e)=>!e.direction||e.direction===r.direction;
+ pass('op',(r,e)=>r.op&&e.op===r.op);
+ pass('dia',(r,e)=>same(r,e)&&dir(r,e)&&dd(e.date,r.date)===0);
+ pass('±1',(r,e)=>same(r,e)&&dir(r,e)&&dd(e.date,r.date)<=1);
+ pass('±3',(r,e)=>same(r,e)&&dir(r,e)&&dd(e.date,r.date)<=3);   // pagos con tarjeta: la API los fecha al liquidarse
+ pass('sentido',(r,e)=>same(r,e)&&e.direction&&e.direction!==r.direction&&dd(e.date,r.date)<=1); // mismo movimiento con el sentido al revés
+ rows.forEach(r=>{r.state=r.skip?'skip':r.match?'dup':'new';r.dirFix=!!(r.match&&r.match.direction!==r.direction);});
  return rows;
 }
 const FORMATS=[scotiabank,mercadopago];
@@ -122,7 +132,7 @@ function parse(text,opts={}){
  if(!format)return {format:null,rows:[],ignored:0,ok:false,error:'No reconozco el formato. Pega las líneas de movimientos tal como salen de la cartola.'};
  if(format.noBalance){
   const read=format.read(src,opts),rows=read.rows.map((r,i)=>({line:i+1,...r}));
-  rows.forEach(r=>{if(!/^aprobado$/i.test(r.status))r.skip=r.status||'Sin estado';});
+  rows.forEach(r=>{if(!/^(aprobado|devuelto parcialmente)$/i.test(r.status))r.skip=r.status||'Sin estado';});
   const ok=rows.filter(r=>!r.skip),sum=d=>ok.filter(r=>r.direction===d).reduce((t,r)=>t+r.amount,0);
   return {format:{id:format.id,name:format.name,noBalance:true},header:{},rows,ignored:read.ignored,opening:null,openingSource:'',final:null,totals:{in:sum('ENTRADA'),out:sum('SALIDA')},bad:0,needsOpening:false,
    ok:ok.length>0,error:!rows.length?'No encontré movimientos en el texto pegado.':''};

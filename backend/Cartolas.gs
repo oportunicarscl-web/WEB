@@ -66,12 +66,18 @@ function ocMpActivityValidate_(p,today){
   if(['ENTRADA','SALIDA'].indexOf(r.direction)<0)throw Error('Falta ingreso o egreso en la línea '+n+'.');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(Date.parse(date))||date>today||date<'2024-01-01')throw Error('Fecha inválida en la línea '+n+': '+date);
   const description=String(r.description||'').replace(/\s+/g,' ').trim().slice(0,200);if(!description)throw Error('Falta la descripción en la línea '+n+'.');
-  return {date:date,direction:r.direction,amount:amount,description:description,time:String(r.time||'').replace(/[^\d:]/g,'').slice(0,5),method:String(r.method||'').replace(/\s+/g,' ').slice(0,60)};
+  return {date:date,direction:r.direction,amount:amount,description:description,time:String(r.time||'').replace(/[^\d:]/g,'').slice(0,5),method:String(r.method||'').replace(/\s+/g,' ').slice(0,60),op:String(r.op||'').replace(/\D/g,'').slice(0,20)};
  });
 }
 function ocMpActivityMatch_(rows,existing){
  const used={},dd=(a,b)=>Math.abs(Date.parse(a)-Date.parse(b))/864e5,hit=rows.map(()=>null);
- [0,1].forEach(tol=>rows.forEach((r,i)=>{if(hit[i])return;const m=existing.find(e=>!used[e.id]&&e.direction===r.direction&&e.amount===r.amount&&dd(e.date,r.date)<=tol);if(m){used[m.id]=true;hit[i]=m;}}));
+ const pass=ok=>rows.forEach((r,i)=>{if(hit[i])return;const m=existing.find(e=>!used[e.id]&&ok(r,e));if(m){used[m.id]=true;hit[i]=m;}});
+ const same=(r,e)=>!(r.op&&e.op&&e.op!==r.op)&&e.amount===r.amount,dir=(r,e)=>!e.direction||e.direction===r.direction;
+ pass((r,e)=>r.op&&e.op===r.op);
+ pass((r,e)=>same(r,e)&&dir(r,e)&&dd(e.date,r.date)===0);
+ pass((r,e)=>same(r,e)&&dir(r,e)&&dd(e.date,r.date)<=1);
+ pass((r,e)=>same(r,e)&&dir(r,e)&&dd(e.date,r.date)<=3);
+ pass((r,e)=>same(r,e)&&e.direction&&e.direction!==r.direction&&dd(e.date,r.date)<=1);
  return hit;
 }
 function ocMpActivityImport_(p,actor){
@@ -81,14 +87,14 @@ function ocMpActivityImport_(p,actor){
  if(!/mercado/i.test(String(accounts[0].nombre||'')))throw Error('Este formato es solo para la cuenta Mercado Pago.');
  const rows=ocMpActivityValidate_(p,ocToday_()),fin=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),acc=String(p.accountId);
  const dead=/^(rejected|cancelled|refunded|charged_back)$/i;
- const existing=fin.rows.filter(r=>ocProd_(r)&&r.cuenta_id===acc&&r.estado_registro!=='ANULADO'&&!dead.test(String(r.estado_fuente||''))).map(r=>({id:String(r.movimiento_id),direction:String(r.direccion||''),amount:Number(r.monto),date:osDate_(osClean_(r).fecha_operacion)||''})).filter(e=>e.date);
+ const existing=fin.rows.filter(r=>ocProd_(r)&&r.cuenta_id===acc&&r.estado_registro!=='ANULADO'&&!dead.test(String(r.estado_fuente||''))).map(r=>({id:String(r.movimiento_id),op:String(r.operacion_origen_id||(/^MP-(\d+)$/.exec(String(r.movimiento_id))||[])[1]||''),direction:String(r.direccion||''),amount:Number(r.monto),date:osDate_(osClean_(r).fecha_operacion)||''})).filter(e=>e.date);
  const hit=ocMpActivityMatch_(rows,existing);
  const batch='CART-'+osHash_('mpact|'+acc+'|'+p.requestId).slice(0,16),now=new Date().toISOString(),fresh=[];let skipped=0;
  rows.forEach((q,i)=>{
   if(hit[i]){skipped++;return;}
   const key=['MPACT',acc,q.date,q.time,q.direction,q.amount,Number(p.offset||0)+i].join('|');
   fresh.push({movimiento_id:'CAR-'+osHash_(key+'|'+batch).slice(0,24),cuenta_id:acc,fecha_operacion:q.date,fecha_original:q.date,moneda:'CLP',direccion:q.direction,monto:q.amount,
-   descripcion:q.description,referencia:"'"+[q.time,q.method].filter(String).join(' · '),hash_origen:key,lote_importacion_id:batch,fuente_fila:Number(p.offset||0)+i+1,tipo_fuente:'cartola_mercadopago',estado_importacion:'CARTOLA',origen:'IMPORTACION',calidad:'CONFIRMADO',
+   descripcion:q.description,referencia:"'"+[q.time,q.method,q.op?'Op '+q.op:''].filter(String).join(' · '),operacion_origen_id:q.op||'',hash_origen:key,lote_importacion_id:batch,fuente_fila:Number(p.offset||0)+i+1,tipo_fuente:'cartola_mercadopago',estado_importacion:'CARTOLA',origen:'IMPORTACION',calidad:'CONFIRMADO',
    monto_confirmado:'SI',incluir_en_saldo:'SI',estado_fuente:'approved',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',ambiente:'PRODUCCION',estado_registro:'ACTIVO',version:1,created_at:now,created_by:actor.id,updated_at:now,updated_by:actor.id});
  });
  if(fresh.length){
