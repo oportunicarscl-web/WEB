@@ -74,3 +74,16 @@ test('Costo de estacionamiento: sobre N días suma (días − N) × valor; confi
  const r=core.reports({...d,settings:{parkingDays:5,parkingRate:3}},'2026-10-19').cars[0];
  assert.equal(r.parking,(base.days-5)*3);assert.equal(r.result,base.result-r.parking);
  assert.equal(core.reports({...d,settings:{parkingDays:999,parkingRate:3}},'2026-10-19').cars[0].parking,0);});
+test('Sin clasificar: separa ingresos, egresos y sin dirección; ignora rechazados, anulados y clasificados',()=>{
+ const mv=[{movimiento_id:'a',direccion:'ENTRADA',monto:1000,fecha_operacion:'2026-10-01',concepto_id:''},
+  {movimiento_id:'b',direccion:'SALIDA',monto:300,fecha_operacion:'2026-10-02',concepto_id:''},
+  {movimiento_id:'c',direccion:'',monto:50,fecha_operacion:'2026-10-03',concepto_id:''},
+  {movimiento_id:'d',direccion:'SALIDA',monto:999,fecha_operacion:'2026-10-03',concepto_id:'X'},
+  {movimiento_id:'e',direccion:'ENTRADA',monto:777,fecha_operacion:'2026-10-03',concepto_id:'',estado_fuente:'rejected'},
+  {movimiento_id:'f',direccion:'ENTRADA',monto:555,fecha_operacion:'2026-10-03',concepto_id:'',estado_registro:'ANULADO'}];
+ const u=core.unclassified(mv,'2026-11-03');
+ assert.deepEqual(u.in,{count:1,sum:1000});assert.deepEqual(u.out,{count:1,sum:300});assert.deepEqual(u.none,{count:1,sum:50});
+ assert.deepEqual(u.byMonth['2026-10'],{in:1000,out:300});
+ const r=core.reports({...data(),movements:mv},'2026-11-03');
+ assert.equal(r.dashboard.unclassified.in.sum,1000);assert.equal(r.dashboard.unclassified.out.count,1);
+});

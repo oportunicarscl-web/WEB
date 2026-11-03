@@ -305,3 +305,4 @@ body.workspace-open{
 #oc-workspace .cn-findbar input{flex:1 1 280px;min-width:0;padding:10px 12px;border:1px solid #d9c8ac;background:#fff;font:inherit}
 .cn-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:50;max-width:min(680px,calc(100vw - 32px));background:#922b24;color:#fff;padding:12px 16px;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:13px}
 .cn-toast button{background:transparent!important;color:#fff!important;border:0!important;padding:0 0 0 10px!important}
+#oc-workspace .os-unclassified article.oc-alert{border:2px solid #c0261d;background:#fdecea}#oc-workspace .os-unclassified article.oc-alert strong{color:#c0261d}
