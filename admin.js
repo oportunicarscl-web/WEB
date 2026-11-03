@@ -67,9 +67,9 @@ function one(){
  <p><button type="submit" ${s.busy?'disabled':''}>Guardar movimiento</button></p></form>`;
 }
 function many(){
- if(s.cart)return cartView();
+ if(s.cart)return s.cart.format?.noBalance?mpView():cartView();
  const ok=s.parsed.filter(x=>!x.error),bad=s.parsed.length-ok.length;
- return `<div class="oc-caja-form">${accountSelect()}<label>Líneas<textarea id="ad-text" rows="10" placeholder="Pega aquí las líneas de la cartola (Scotiabank: tal cual se copian del PDF, con o sin el encabezado).&#10;También sirve: 15-10-2026 ; Depósito cliente ; 250.000">${esc(s.text)}</textarea></label></div>
+ return `<div class="oc-caja-form">${accountSelect()}<label>Líneas<textarea id="ad-text" rows="10" placeholder="Pega aquí las líneas de la cartola (Scotiabank: tal cual se copian del PDF, con o sin el encabezado).&#10;Mercado Pago: en «Actividad», selecciona toda la página (Ctrl+A / Cmd+A), copia y pega aquí. Sirve página por página.&#10;También sirve: 15-10-2026 ; Depósito cliente ; 250.000">${esc(s.text)}</textarea></label></div>
  <p><small>Cartolas reconocidas: <b>Scotiabank</b> (copia del PDF «Consulta detalle de cartola emitida» o desde Excel). Las líneas de encabezado y pie de página se ignoran solas. Para otros casos: <b>fecha ; descripción ; monto</b> (negativo = salió) o <b>fecha ; descripción ; cargo ; abono</b>.</small></p>
  <p><button id="ad-parse">Revisar líneas</button></p>
  ${s.parsed.length?`<div class="oc-table-scroll"><table><thead><tr><th>#</th><th>Fecha</th><th>Descripción</th><th>Monto</th><th></th></tr></thead><tbody>${s.parsed.map(x=>x.error?`<tr><td>${x.line}</td><td colspan="3">${esc(x.raw)}</td><td><span class="oc-chip oc-chip-bad">${esc(x.error)}</span></td></tr>`:`<tr><td>${x.line}</td><td>${esc(fmtDate(x.date))}</td><td>${esc(x.description)}</td><td class="${x.direction==='ENTRADA'?'oc-in':'oc-out'}">${x.direction==='ENTRADA'?'+':'−'}${money(x.amount)}</td><td><span class="oc-chip oc-chip-ok">Listo</span></td></tr>`).join('')}</tbody></table></div>
@@ -82,6 +82,13 @@ const movs=src=>root.OCCajaNueva?.movementsBySource?root.OCCajaNueva.movementsBy
 function accountMovs(accountId){return ['CARTOLA','MANUAL','ATAJO'].flatMap(movs).filter(m=>String(m.accountId)===String(accountId));}
 function analyze(){
  const fmt=C()&&C().detect(s.text);if(!fmt){s.cart=null;return false;}
+ if(fmt.noBalance){
+  if(!s.accountTouched){const a=C().accountFor(fmt,accounts());if(a)s.account=a.id;}
+  const r=C().parse(s.text,{format:fmt.id,today:new Date().toLocaleDateString('sv-SE',{timeZone:'America/Santiago'})});
+  const all=root.OCCajaNueva?.snapshot?.()?.movements||[];
+  C().matchExisting(r.rows,all.filter(m=>String(m.accountId)===String(s.account)&&Number.isFinite(m.amount)));
+  s.cart=r;return true;
+ }
  if(!s.accountTouched){const a=C().accountFor(fmt,accounts());if(a)s.account=a.id;}
  const own=accountMovs(s.account),imported=own.filter(m=>m.source==='CARTOLA'),known=imported.map(m=>m.balance).filter(Number.isFinite);
  const r=C().parse(s.text,{format:fmt.id,opening:Number.isFinite(s.opening)?s.opening:undefined,known});
@@ -97,6 +104,40 @@ function analyze(){
  const sign=m=>m.direction==='ENTRADA'?m.amount:-m.amount,last=before.reduce((d,m)=>m.date>d?m.date:d,'');
  r.gap=r.opening!==null&&before.length&&!before.some(m=>m.balance===r.opening)?(before.find(m=>m.date===last&&!before.some(o=>o!==m&&o.balance-sign(o)===m.balance))||before.find(m=>m.date===last)):null;
  s.cart=r;return true;
+}
+const isMpAccount=a=>!!a&&/mercado/i.test(a.name);
+function mpView(){
+ const r=s.cart,acc=accounts().find(a=>a.id===s.account),fresh=r.rows.filter(x=>x.state==='new'),dups=r.rows.filter(x=>x.state==='dup').length,skip=r.rows.filter(x=>x.state==='skip').length;
+ const why=!isMpAccount(acc)?'Elige arriba la cuenta Mercado Pago.':!fresh.length?'Todos estos movimientos ya estaban en la cuenta.':'',ready=!why&&!s.busy;
+ const d=r.rows.map(x=>x.date).filter(Boolean).sort();
+ const chip=x=>x.state==='skip'?`<span class="oc-chip oc-chip-bad">Omitido: ${esc(x.skip)}</span>`:x.state==='dup'?`<span class="oc-chip" title="${esc(fmtDate(x.match.date)+' · '+x.match.description)}">Ya está</span>`:'<span class="oc-chip oc-chip-ok">Nueva</span>';
+ return `<div class="oc-caja-form">${accountSelect()}</div>
+ <p><b>Formato: ${esc(r.format.name)}</b> · ${r.rows.length} movimientos${d.length?` del ${esc(fmtDate(d[0]))} al ${esc(fmtDate(d[d.length-1]))}`:''} · <span class="oc-in">Ingresos +${money(r.totals.in)}</span> · <span class="oc-out">Egresos −${money(r.totals.out)}</span></p>
+ <p><small>Mercado Pago no muestra el año: se toma el año actual (y el anterior al pasar de enero a diciembre). Revisa las fechas antes de importar.</small></p>
+ <div id="ad-cart-bar" class="oc-card" style="border:2px solid ${ready?'#5f9c74':'#d9a441'};padding:14px;margin:10px 0">
+  ${why?`<p><span class="oc-chip oc-chip-bad">${esc(why)}</span></p>`:''}
+  ${s.message?`<p role="status"><b>${esc(s.message)}</b></p>`:''}
+  <p style="margin-bottom:0"><button id="ad-cart-save" ${s.busy?'disabled':''} style="${ready?'background:#2f6b45;color:#fff;border-color:#2f6b45;font-weight:700':''}">${s.busy?'Importando…':`Importar ${fresh.length} movimientos`}</button> <button id="ad-cart-back">Volver a pegar</button>
+  <small>${fresh.length} nuevos${dups?` · ${dups} ya estaban (sincronizados o pegados antes: no se repiten)`:''}${skip?` · ${skip} omitidos por no estar aprobados`:''}</small></p>
+ </div>
+ <div class="oc-table-scroll"><table><thead><tr><th>#</th><th>Fecha</th><th>Hora</th><th>Detalle</th><th>Medio</th><th>Egreso</th><th>Ingreso</th><th></th></tr></thead><tbody>${r.rows.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(fmtDate(x.date))}</td><td><small>${esc(x.time)}</small></td><td>${esc(x.description)}</td><td><small>${esc(x.method)}</small></td><td class="oc-out">${x.direction==='SALIDA'?money(x.amount):''}</td><td class="oc-in">${x.direction==='ENTRADA'?money(x.amount):''}</td><td>${chip(x)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+async function saveMp(el){
+ if(s.busy||!s.cart)return;
+ const acc=accounts().find(a=>a.id===s.account),fresh=s.cart.rows.filter(x=>x.state==='new');
+ const stop=m=>{s.message=m;draw(el);el.querySelector('#ad-cart-bar')?.scrollIntoView({block:'center',behavior:'smooth'});};
+ if(!isMpAccount(acc))return stop('Elige la cuenta Mercado Pago.');
+ if(!fresh.length)return stop('No hay movimientos nuevos para importar.');
+ s.busy=true;s.message='Importando movimientos de Mercado Pago…';draw(el);
+ try{
+  // Se envían todos los aprobados (no solo los nuevos): Google vuelve a cruzar contra la planilla y decide.
+  const rows=s.cart.rows.filter(x=>x.state!=='skip').map(x=>({date:x.date,time:x.time,direction:x.direction,amount:x.amount,description:x.description,method:x.method}));
+  const r=await config.mpActivityImport(s.account,s.requestId,rows);
+  root.OCCajaNueva?.addMovements(r.saved);
+  s.message=`${r.saved.length} movimientos importados${r.skipped?` · ${r.skipped} ya estaban`:''}. Quedan en «Por completar» para asignar concepto y auto.`;
+  s.cart=null;s.text='';s.accountTouched=false;s.requestId=uid();
+ }catch(e){s.message='No se importó: '+e.message;}
+ s.busy=false;draw(el);el.querySelector('[role=status]')?.scrollIntoView({block:'center',behavior:'smooth'});
 }
 function cartView(){
  const r=s.cart,acc=accounts().find(a=>a.id===s.account),okRows=r.rows.filter(x=>!x.error),fresh=okRows.filter(x=>x.state!=='dup'),dups=okRows.length-fresh.length,maybe=fresh.filter(x=>x.state==='maybe').length;
@@ -167,7 +208,7 @@ function wire(el){
  const text=el.querySelector('#ad-text');if(text){text.oninput=()=>{s.text=text.value;};text.onpaste=()=>setTimeout(()=>{s.text=text.value;s.message='';s.opening=null;s.requestId=uid();if(analyze()){s.parsed=[];draw(el);}},0);}
  const parse=el.querySelector('#ad-parse');if(parse)parse.onclick=()=>{s.message='';s.opening=null;s.requestId=uid();if(analyze())s.parsed=[];else s.parsed=parseLines(s.text);draw(el);};
  const back=el.querySelector('#ad-cart-back');if(back)back.onclick=()=>{s.cart=null;s.opening=null;draw(el);};
- const cs=el.querySelector('#ad-cart-save');if(cs)cs.onclick=()=>saveCart(el);
+ const cs=el.querySelector('#ad-cart-save');if(cs)cs.onclick=()=>s.cart?.format?.noBalance?saveMp(el):saveCart(el);
  const op=el.querySelector('#ad-opening-ok');if(op)op.onclick=()=>{const v=C().clp(el.querySelector('#ad-opening').value);if(v===null){s.message='Saldo inicial inválido.';draw(el);return;}s.message='';s.opening=v;analyze();draw(el);};
  el.querySelectorAll('[data-ad-first]').forEach(b=>b.onclick=()=>{const f=s.cart&&s.cart.rows[0];if(!f)return;s.message='';s.opening=f.balance+(b.dataset.adFirst==='ENTRADA'?-f.amount:f.amount);analyze();draw(el);});
  el.querySelectorAll('[data-ad-lot]').forEach(b=>b.onclick=async()=>{

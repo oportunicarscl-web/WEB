@@ -95,6 +95,10 @@ function osMpWrite_(fin,row){
  throw Error(String(last.message)+' (Mercado Pago '+row.operacion_origen_id+')');
 }
 // Agrega los eventos que no existen y completa fecha/dirección en filas antiguas de MP que las tenían vacías. Devuelve conteos.
+function osMpPasted_(fin,cuenta,e){
+ const dd=(a,b)=>Math.abs(Date.parse(a)-Date.parse(b))/864e5,c=fin.rows.filter(r=>r.cuenta_id===cuenta&&ocProd_(r)&&r.estado_registro!=='ANULADO'&&/^MPACT\|/.test(String(r.hash_origen||''))&&!String(r.operacion_origen_id||'')&&r.direccion===e.direccion&&Number(r.monto)===Number(e.monto));
+ const day=r=>osDate_(osClean_(r).fecha_operacion)||'';return c.find(r=>day(r)===e.fecha)||c.find(r=>day(r)&&dd(day(r),e.fecha)<=1)||null;
+}
 function osMpApply_(fin,cuenta,events,cancelIds){
  const idx=osMpIndex_(fin,cuenta),now=new Date().toISOString(),t0=Date.now(),out={agregados:0,completados:0,fallidos:0,error:''};
  events.forEach(e=>{
@@ -109,6 +113,10 @@ function osMpApply_(fin,cuenta,events,cancelIds){
    if(Object.keys(patch).length&&out.completados<60&&Date.now()-t0<80000){patch.version=Number(ex.version||1)+1;patch.updated_at=now;patch.updated_by='MERCADO_PAGO_API';try{ocPatchRow_(fin,ex._row,patch);Object.assign(ex,patch);out.completados++;}catch(err){out.fallidos=(out.fallidos||0)+1;out.error=String(err.message);}}
    return;
   }
+  // ¿Ya se pegó desde «Actividad»? Se adopta esa fila (conserva su clasificación) en vez de duplicarla.
+  const pasted=osMpPasted_(fin,cuenta,e);
+  if(pasted){const patch={operacion_origen_id:e.id,referencia:'MP-'+e.id,hash_origen:'MP|'+e.id,descripcion:e.descripcion+' · '+String(pasted.descripcion||''),version:Number(pasted.version||1)+1,updated_at:now,updated_by:'MERCADO_PAGO_API'};
+   try{ocPatchRow_(fin,pasted._row,patch);Object.assign(pasted,patch);idx[e.id]=pasted;out.adoptados=(out.adoptados||0)+1;}catch(err){out.fallidos=(out.fallidos||0)+1;out.error=String(err.message);}return;}
   osMpWrite_(fin,row);fin.rows.push(row);idx[e.id]=row;out.agregados++;
  });
  (cancelIds||[]).forEach(id=>{const ex=idx[id];if(ex&&String(ex.estado_fuente)==='authorized'&&ex.estado_registro!=='ANULADO'&&!String(ex.concepto_id||'')){try{ocPatchRow_(fin,ex._row,{estado_registro:'ANULADO',version:Number(ex.version||1)+1,updated_at:now,updated_by:'MERCADO_PAGO_API'});ex.estado_registro='ANULADO';out.anulados=(out.anulados||0)+1;}catch(err){out.error=String(err.message);}}});

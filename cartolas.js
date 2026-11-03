@@ -57,7 +57,59 @@ const scotiabank={
   return {opening,from:iso(from),to:iso(to)};
  }
 };
-const FORMATS=[scotiabank];
+
+// ---- Mercado Pago · pantalla «Actividad» (seleccionar todo y copiar) ----
+// Bloques:  Nombre ⏎ hh:mm ⏎ (nombre repetido) ⏎ Tipo ⏎ [Medio] ⏎ Estado ⏎ + / - ⏎ $ ⏎ monto,  bajo encabezados «23 de octubre».
+// No trae saldo ni año: el año sale de la fecha de hoy (la lista va de lo más nuevo a lo más antiguo).
+// Solo se importan los «Aprobado»; los demás se muestran como omitidos.
+const MESES={enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
+const MP_DAY=/^(\d{1,2})\s+de\s+([a-záéíóú]+)(?:\s+(?:de\s+|del\s+)?(\d{4}))?$/i,MP_TIME=/^\d{1,2}:\d{2}$/;
+const MP_STATUS=/^(aprobado|rechazado|cancelado|devuelto|reembolsado|pendiente|en proceso|en mediaci[oó]n|contracargo|anulado|expirado)$/i;
+const shiftDay=(iso,n)=>{const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
+const mercadopago={
+ id:'mercadopago',name:'Mercado Pago · Actividad',account:/mercado/i,noBalance:true,
+ detect(text){return /\b\d{1,2}:\d{2}\b/.test(text)&&/transferencia|pago|aprobado/i.test(text)?this.read(text).rows.length:0;},
+ read(text,opts={}){
+  const L=String(text||'').split(/\r?\n/).map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const today=opts.today||new Date().toISOString().slice(0,10),rows=[];
+  let year=Number(today.slice(0,4)),lastM=null,day='',ignored=0;
+  for(let i=0;i<L.length;i++){
+   const l=L[i];
+   if(/^hoy$/i.test(l)||/^ayer$/i.test(l)){day=/^hoy$/i.test(l)?today:shiftDay(today,-1);lastM=Number(day.slice(5,7));year=Number(day.slice(0,4));continue;}
+   const dm=l.match(MP_DAY);
+   if(dm&&MESES[dm[2].toLowerCase()]){
+    const m=MESES[dm[2].toLowerCase()];
+    if(dm[3])year=Number(dm[3]);else if(lastM===null){if((isoDate(dm[1],m,year)||'9')>today)year--;}else if(m>lastM)year--;
+    lastM=m;day=isoDate(dm[1],m,year);continue;
+   }
+   if(!MP_TIME.test(l)||!day||i===0)continue;
+   const name=L[i-1],mid=[];let sign='',amount=null,j=i+1;
+   for(;j<L.length&&j<i+14;j++){
+    const t=L[j],one=t.match(/^([+\-−])\s*\$\s*(\d[\d.]*)(?:,\d{1,2})?$/);
+    if(one){sign=one[1];amount=clp(one[2]);break;}
+    if(/^[+\-−]$/.test(t)&&L[j+1]==='$'&&clp(L[j+2])!==null){sign=t;amount=clp(L[j+2]);j+=2;break;}
+    if(MP_TIME.test(t)||MP_DAY.test(t))break;
+    mid.push(t);
+   }
+   if(!amount){ignored++;continue;}
+   const info=mid.filter(t=>t.split(name).join('').trim()!==''),status=info.find(t=>MP_STATUS.test(t))||'',rest=info.filter(t=>t!==status);
+   const type=rest[0]||'',method=rest.slice(1).join(' · ');
+   rows.push({date:day,time:l,counterpart:name,type,method,status,description:(type?type+' · ':'')+name,doc:'',amount,balance:null,direction:sign==='+'?'ENTRADA':'SALIDA'});
+   i=j;
+  }
+  return {rows,ignored};
+ }
+};
+// Cruza lo pegado con lo que ya está en la cuenta (sincronizado por la API o pegado antes): mismo sentido y monto,
+// primero el mismo día y después ±1 día. Cada movimiento existente se usa una sola vez (5 transferencias iguales = 5).
+function matchExisting(rows,existing){
+ const used=new Set(),dd=(a,b)=>Math.abs(Date.parse(a)-Date.parse(b))/864e5,pool=(existing||[]).filter(e=>e&&e.date);
+ [0,1].forEach(tol=>rows.forEach(r=>{if(r.skip||r.match)return;const m=pool.find(e=>!used.has(e.id)&&e.direction===r.direction&&e.amount===r.amount&&dd(e.date,r.date)<=tol);if(m){used.add(m.id);r.match=m;}}));
+ rows.forEach(r=>{r.state=r.skip?'skip':r.match?'dup':'new';});
+ return rows;
+}
+const FORMATS=[scotiabank,mercadopago];
+
 
 function detect(text){
  let best=null,score=0;FORMATS.forEach(f=>{const n=f.detect(String(text||''));if(n>score){score=n;best=f;}});
@@ -68,6 +120,13 @@ function detect(text){
 function parse(text,opts={}){
  const src=String(text||''),format=opts.format?FORMATS.find(f=>f.id===opts.format):detect(src);
  if(!format)return {format:null,rows:[],ignored:0,ok:false,error:'No reconozco el formato. Pega las líneas de movimientos tal como salen de la cartola.'};
+ if(format.noBalance){
+  const read=format.read(src,opts),rows=read.rows.map((r,i)=>({line:i+1,...r}));
+  rows.forEach(r=>{if(!/^aprobado$/i.test(r.status))r.skip=r.status||'Sin estado';});
+  const ok=rows.filter(r=>!r.skip),sum=d=>ok.filter(r=>r.direction===d).reduce((t,r)=>t+r.amount,0);
+  return {format:{id:format.id,name:format.name,noBalance:true},header:{},rows,ignored:read.ignored,opening:null,openingSource:'',final:null,totals:{in:sum('ENTRADA'),out:sum('SALIDA')},bad:0,needsOpening:false,
+   ok:ok.length>0,error:!rows.length?'No encontré movimientos en el texto pegado.':''};
+ }
  const header=format.header?format.header(src):{},read=format.read(src),ignored=read.ignored;
  const rows=read.rows.map((r,i)=>({line:i+1,...r}));
  // Saldo de partida: el que escribió el usuario, el del encabezado pegado o uno ya guardado que encaje con la primera línea.
@@ -95,7 +154,7 @@ function fingerprint(accountId,r){return ['CARTOLA',accountId,r.date,r.direction
 // Cuenta sugerida para el formato detectado.
 function accountFor(format,accounts){const f=format&&FORMATS.find(x=>x.id===format.id);if(!f||!f.account)return null;const m=(accounts||[]).filter(a=>f.account.test(a.name));return m.length===1?m[0]:null;}
 
-const api={FORMATS,detect,parse,fingerprint,accountFor,clp};
+const api={FORMATS,detect,parse,fingerprint,accountFor,clp,matchExisting};
 if(typeof module!=='undefined')module.exports=api;
 root.OCCartolas=api;
 })(typeof globalThis==='undefined'?this:globalThis);

@@ -54,3 +54,32 @@ test('Cartolas (backend): acepta la cadena correcta y rechaza descuadres',()=>{
  assert.throws(()=>g.ocCartolaValidate_({opening:0,rows:[{...rows[0],date:'2027-01-01'}]},'2026-10-27'),/Fecha/);
  assert.equal(g.ocCartolaFingerprint_('A',rows[2]),C.fingerprint('A',r.rows[2]));
 });
+
+// ---- Mercado Pago · «Actividad» pegada ----
+const MP_TEXT=fs.readFileSync(__dirname+'/fixtures/mp-actividad.txt','utf8');
+test('Mercado Pago Actividad: detecta formato y lee 25 movimientos con fecha, sentido y monto',()=>{
+ assert.equal(C.detect(MP_TEXT).id,'mercadopago');
+ const r=C.parse(MP_TEXT,{today:'2026-11-03'});
+ assert.equal(r.rows.length,25);assert.equal(r.rows.filter(x=>x.skip).length,0);
+ assert.deepEqual([r.rows[0].date,r.rows[0].direction,r.rows[0].amount,r.rows[0].description],['2026-10-23','ENTRADA',3431730,'Transferencia recibida · Cristian Orlando Loncón Vásquez']);
+ assert.deepEqual([r.rows[4].direction,r.rows[4].amount,r.rows[4].method],['SALIDA',26466,'Mastercard prepago']);
+ assert.equal(r.rows.filter(x=>x.amount===5000000).length,5);
+ assert.equal(r.rows[24].date,'2026-10-19');
+});
+test('Mercado Pago Actividad: año anterior al cruzar de enero a diciembre y omite no aprobados',()=>{
+ const t='5 de enero\nTienda\n10:00\nTienda\nPago online\nAprobado\n-\n$\n1.000\n30 de diciembre\nJuan\n09:00\nJuan\nTransferencia recibida\nRechazado\n+\n$\n2.000';
+ const r=C.parse(t,{format:'mercadopago',today:'2026-01-10'});
+ assert.deepEqual(r.rows.map(x=>x.date),['2026-01-05','2025-12-30']);
+ assert.equal(r.rows[1].skip,'Rechazado');assert.equal(r.totals.in,0);
+});
+test('Mercado Pago Actividad: cruza con lo existente una vez por fila (±1 día)',()=>{
+ const r=C.parse(MP_TEXT,{today:'2026-11-03'});
+ C.matchExisting(r.rows,[{id:'a',date:'2026-10-21',direction:'ENTRADA',amount:5000000},{id:'b',date:'2026-10-22',direction:'ENTRADA',amount:5000000},{id:'c',date:'2026-10-21',direction:'SALIDA',amount:316066}]);
+ assert.equal(r.rows.filter(x=>x.state==='dup').length,3);assert.equal(r.rows.filter(x=>x.state==='new').length,22);
+});
+test('Backend MP Actividad: valida y cruza igual que la web',()=>{
+ const b=backend(),rows=b.ocMpActivityValidate_({rows:[{date:'2026-10-21',direction:'ENTRADA',amount:5000000,description:'x',time:'17:51'},{date:'2026-10-21',direction:'ENTRADA',amount:5000000,description:'x'}]},'2026-11-03');
+ const hit=b.ocMpActivityMatch_(rows,[{id:'a',date:'2026-10-20',direction:'ENTRADA',amount:5000000}]);
+ assert.equal(hit.filter(Boolean).length,1);
+ assert.throws(()=>b.ocMpActivityValidate_({rows:[{date:'2026-12-01',direction:'ENTRADA',amount:1,description:'x'}]},'2026-11-03'));
+});

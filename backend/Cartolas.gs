@@ -7,6 +7,7 @@
 function ocCartolaExtra_(p,actor){
  if(p.action==='cartolaImport')return ocCartolaImport_(p,actor);
  if(p.action==='cartolaVoid')return ocCartolaVoid_(p,actor);
+ if(p.action==='mpActivityImport')return ocMpActivityImport_(p,actor);
  return undefined;
 }
 function ocCartolaFingerprint_(accountId,r){return ['CARTOLA',accountId,r.date,r.direction,r.amount,r.balance,r.doc||''].join('|');}
@@ -50,6 +51,53 @@ function ocCartolaImport_(p,actor){
   fin.sheet.getRange(fin.sheet.getLastRow()+1,1,values.length,fin.headers.length).setValues(values);SpreadsheetApp.flush();
  }
  if(typeof osAudit_==='function')osAudit_(actor,'IMPORTAR_CARTOLA','MOVIMIENTOS_BANCARIOS',batch,{cuenta:acc,formato:format,nuevos:fresh.length,ya_estaban:skipped,saldo_final:rows[rows.length-1].balance});
+ return {batch:batch,saved:fresh.map(ocCartolaSlim_),skipped:skipped};
+}
+// ---- Mercado Pago · «Actividad» pegada desde la web ----
+// No trae saldo ni número de operación: se cruza contra lo que ya está en la cuenta (API o pegado antes) por sentido + monto,
+// primero el mismo día y luego ±1 día, usando cada fila existente una sola vez. Lo que no calza se agrega como nuevo.
+// Queda como lote CART- (estado_importacion CARTOLA), así «Anular importación» funciona igual que con las cartolas.
+// Cuando la API de Mercado Pago traiga después esa misma operación, osMpApply_ la adopta (no la duplica).
+function ocMpActivityValidate_(p,today){
+ if(!Array.isArray(p.rows)||!p.rows.length||p.rows.length>200)throw Error('Envía entre 1 y 200 movimientos por vez.');
+ return p.rows.map((r,i)=>{
+  const n=i+1,amount=Number(r.amount),date=String(r.date||'');
+  if(!Number.isSafeInteger(amount)||amount<=0||amount>10000000000)throw Error('Monto inválido en la línea '+n+'.');
+  if(['ENTRADA','SALIDA'].indexOf(r.direction)<0)throw Error('Falta ingreso o egreso en la línea '+n+'.');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(Date.parse(date))||date>today||date<'2024-01-01')throw Error('Fecha inválida en la línea '+n+': '+date);
+  const description=String(r.description||'').replace(/\s+/g,' ').trim().slice(0,200);if(!description)throw Error('Falta la descripción en la línea '+n+'.');
+  return {date:date,direction:r.direction,amount:amount,description:description,time:String(r.time||'').replace(/[^\d:]/g,'').slice(0,5),method:String(r.method||'').replace(/\s+/g,' ').slice(0,60)};
+ });
+}
+function ocMpActivityMatch_(rows,existing){
+ const used={},dd=(a,b)=>Math.abs(Date.parse(a)-Date.parse(b))/864e5,hit=rows.map(()=>null);
+ [0,1].forEach(tol=>rows.forEach((r,i)=>{if(hit[i])return;const m=existing.find(e=>!used[e.id]&&e.direction===r.direction&&e.amount===r.amount&&dd(e.date,r.date)<=tol);if(m){used[m.id]=true;hit[i]=m;}}));
+ return hit;
+}
+function ocMpActivityImport_(p,actor){
+ if(!ocIsAdminUser_(actor))throw Error('Solo el administrador de la caja importa movimientos.');
+ if(!/^[-\w]{8,60}$/.test(String(p.requestId||'')))throw Error('Solicitud inválida.');
+ const accounts=ocTable_('OC_MAESTROS_ID','CUENTAS_FINANCIERAS').rows.filter(a=>a.cuenta_id===p.accountId&&ocProd_(a));if(accounts.length!==1)throw Error('Cuenta no encontrada.');
+ if(!/mercado/i.test(String(accounts[0].nombre||'')))throw Error('Este formato es solo para la cuenta Mercado Pago.');
+ const rows=ocMpActivityValidate_(p,ocToday_()),fin=ocTable_('OC_FINANZAS_ID','MOVIMIENTOS_BANCARIOS'),acc=String(p.accountId);
+ const dead=/^(rejected|cancelled|refunded|charged_back)$/i;
+ const existing=fin.rows.filter(r=>ocProd_(r)&&r.cuenta_id===acc&&r.estado_registro!=='ANULADO'&&!dead.test(String(r.estado_fuente||''))).map(r=>({id:String(r.movimiento_id),direction:String(r.direccion||''),amount:Number(r.monto),date:osDate_(osClean_(r).fecha_operacion)||''})).filter(e=>e.date);
+ const hit=ocMpActivityMatch_(rows,existing);
+ const batch='CART-'+osHash_('mpact|'+acc+'|'+p.requestId).slice(0,16),now=new Date().toISOString(),fresh=[];let skipped=0;
+ rows.forEach((q,i)=>{
+  if(hit[i]){skipped++;return;}
+  const key=['MPACT',acc,q.date,q.time,q.direction,q.amount,Number(p.offset||0)+i].join('|');
+  fresh.push({movimiento_id:'CAR-'+osHash_(key+'|'+batch).slice(0,24),cuenta_id:acc,fecha_operacion:q.date,fecha_original:q.date,moneda:'CLP',direccion:q.direction,monto:q.amount,
+   descripcion:q.description,referencia:"'"+[q.time,q.method].filter(String).join(' · '),hash_origen:key,lote_importacion_id:batch,fuente_fila:Number(p.offset||0)+i+1,tipo_fuente:'cartola_mercadopago',estado_importacion:'CARTOLA',origen:'IMPORTACION',calidad:'CONFIRMADO',
+   monto_confirmado:'SI',incluir_en_saldo:'SI',estado_fuente:'approved',estado_clasificacion:'PENDIENTE',estado_conciliacion:'PENDIENTE',ambiente:'PRODUCCION',estado_registro:'ACTIVO',version:1,created_at:now,created_by:actor.id,updated_at:now,updated_by:actor.id});
+ });
+ if(fresh.length){
+  const write=list=>{const values=list.map(r=>fin.headers.map(h=>Object.prototype.hasOwnProperty.call(r,h)?ocLiteral_(ocCellValue_(h,r[h])):''));fin.sheet.getRange(fin.sheet.getLastRow()+1,1,values.length,fin.headers.length).setValues(values);};
+  // Si la hoja no acepta tipo_fuente/estado_fuente por su lista desplegable, se reintenta sin ellos (la huella MPACT| identifica la fila).
+  try{write(fresh);}catch(e){if(!/inv[aá]lid|validaci|cat[aá]logo/i.test(String(e.message)))throw e;fresh.forEach(r=>{r.tipo_fuente='';r.estado_fuente='';});write(fresh);}
+  SpreadsheetApp.flush();
+ }
+ if(typeof osAudit_==='function')osAudit_(actor,'IMPORTAR_MP_ACTIVIDAD','MOVIMIENTOS_BANCARIOS',batch,{cuenta:acc,nuevos:fresh.length,ya_estaban:skipped});
  return {batch:batch,saved:fresh.map(ocCartolaSlim_),skipped:skipped};
 }
 function ocCartolaSlim_(r){const o=ocSlimMov_(r);if(typeof o.referencia==='string')o.referencia=o.referencia.replace(/^'/,'');['saldo_cartola','lote_importacion_id','hash_origen'].forEach(k=>{if(r[k]!==undefined)o[k]=r[k];});return o;}

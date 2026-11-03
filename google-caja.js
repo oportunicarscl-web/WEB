@@ -81,7 +81,7 @@
   if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint))throw Error('La dirección de conexión Google no es válida.');
   async function call(action,payload={}){
    const {data,error}=await client.auth.getSession();if(error||!data.session?.access_token)throw Error('Inicia sesión nuevamente.');
-   const control=new AbortController(),timer=setTimeout(()=>control.abort(),action==='syncMercadoPago'||action==='mailSend'||action==='load'||action==='cartolaImport'||action==='cartolaVoid'?150000:30000);
+   const control=new AbortController(),timer=setTimeout(()=>control.abort(),action==='syncMercadoPago'||action==='mailSend'||action==='load'||action==='cartolaImport'||action==='cartolaVoid'||action==='mpActivityImport'?150000:30000);
    try{
     const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,action,token:data.session.access_token}),credentials:'omit',redirect:'follow',referrerPolicy:'no-referrer',signal:control.signal});
     if(!response.ok)throw Error('Google no respondió correctamente.');
@@ -109,6 +109,10 @@
    // Cartolas: se envían en tramos de 150 encadenando el saldo; todos los tramos comparten la misma solicitud (un solo lote).
    async cartolaImport(accountId,requestId,format,opening,rows){let prev=opening,saved=[],skipped=0,batch='';
     for(let i=0;i<rows.length;i+=150){const part=rows.slice(i,i+150),r=await call('cartolaImport',{accountId,requestId,format,opening:prev,offset:i,rows:part});batch=r.batch;skipped+=r.skipped;saved=saved.concat(r.saved.map(raw=>store.addRaw(raw)).filter(Boolean));prev=part[part.length-1].balance;}
+    return {batch,saved,skipped};},
+   // Mercado Pago «Actividad» pegada: sin saldo; Google vuelve a cruzar con lo existente para no duplicar.
+   async mpActivityImport(accountId,requestId,rows){let saved=[],skipped=0,batch='';
+    for(let i=0;i<rows.length;i+=150){const r=await call('mpActivityImport',{accountId,requestId,offset:i,rows:rows.slice(i,i+150)});batch=r.batch;skipped+=r.skipped;saved=saved.concat(r.saved.map(raw=>store.addRaw(raw)).filter(Boolean));}
     return {batch,saved,skipped};},
    async cartolaVoid(batch){const r=await call('cartolaVoid',{batch});r.ids.forEach(id=>store.patchRaw(id,{estado_registro:'ANULADO'}));return r.ids;},
    async saveMpToken(t){return call('saveMpToken',t);},
