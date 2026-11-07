@@ -5,8 +5,8 @@
 // Sueldo JT: base + variable (regla y tope abiertos). Arriendo: arriendo + estacionamientos. Cars and Coffee: cuota.
 // Las planillas son la referencia del flujo (CSV) para encontrar cada pago: nunca suman en los totales.
 const OBLIGS={
- JT:{label:'Sueldo JT',intro:'Base fija por mes y variable aparte (regla y tope por definir: se ingresan a mano).',
-  comps:[['BASE','Base',3000000],['VARIABLE','Variable',null]],
+ JT:{label:'Sueldo JT',intro:'Sueldo base fijo por mes, comisiones (variable) aparte e imposiciones pagadas (AFP, salud, SII). Los montos se ingresan a mano.',
+  comps:[['BASE','Sueldo base',3000000],['VARIABLE','Comisiones',null],['IMPOSICIONES','Imposiciones',null]],
   planilla:[{n:52,mes:'2025-12',monto:3000000,origen:'SCOTIA'},{n:139,mes:'2026-01',monto:5741907,origen:'SCOTIA'},{n:177,mes:'2026-01',monto:6000000,origen:'SCOTIA'},
    {n:261,mes:'2026-02',monto:6000000,origen:'SCOTIA'},{n:374,mes:'2026-03',monto:6000000,origen:'SCOTIA'},{n:470,mes:'2026-05',monto:6000000,origen:'MP'},
    {n:571,mes:'2026-06',monto:6000000,origen:'MP'},{n:634,mes:'2026-07',monto:3000000,origen:'MP'},{n:723,mes:'2026-08',monto:5000820,origen:'Sin cuenta'},
@@ -76,7 +76,32 @@ function matchPlanilla(rows,movements,imputed){
   return {...r,hit:null,candidates:cands};
  });
 }
-const api={months,pendingByLiq,fifo,combos,matchPlanilla,OBLIGS};
+// ---------- RRHH ----------
+// Días hábiles (lunes a viernes) entre dos fechas, ambas incluidas. Los feriados se descuentan a mano editando los días.
+function businessDays(a,b){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(a||'')||!/^\d{4}-\d{2}-\d{2}$/.test(b||'')||b<a)return 0;
+ let n=0;for(let d=new Date(a+'T12:00:00Z');d.toISOString().slice(0,10)<=b;d.setUTCDate(d.getUTCDate()+1)){const w=d.getUTCDay();if(w!==0&&w!==6)n++;}return n;
+}
+// Meses completos trabajados entre el ingreso y una fecha.
+function monthsWorked(from,to){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(from||'')||!to||to<from)return 0;
+ let m=(Number(to.slice(0,4))-Number(from.slice(0,4)))*12+Number(to.slice(5,7))-Number(from.slice(5,7));if(Number(to.slice(8,10))<Number(from.slice(8,10)))m--;return Math.max(0,m);
+}
+// Feriado legal (Chile): 15 días hábiles por año = 1,25 por mes trabajado. Saldo = saldo inicial + devengado − tomado.
+function vacation(worker,events,asOf){
+ const end=worker.fecha_termino&&worker.fecha_termino<asOf?worker.fecha_termino:asOf,anual=Number(worker.dias_vacaciones_anuales)||15;
+ const meses=monthsWorked(worker.fecha_ingreso,end),devengado=Math.round(meses*anual/12*100)/100,inicial=Number(worker.vacaciones_saldo_inicial)||0;
+ const own=(events||[]).filter(e=>e.trabajador_id===worker.trabajador_id),sum=t=>own.filter(e=>e.tipo===t).reduce((a,e)=>a+(Number(e.dias)||0),0);
+ const tomado=sum('VACACIONES');
+ return {meses,anual,devengado,inicial,tomado,saldo:Math.round((inicial+devengado-tomado)*100)/100,licencia:sum('LICENCIA'),permiso:sum('PERMISO'),ausencia:sum('AUSENCIA')};
+}
+// Histórico por año: totales por componente, devengado, pagado y saldo acumulado mes a mes.
+function history(ms){
+ let acc=0;const rows=ms.map(r=>{acc+=r.saldo;return {...r,acumulado:acc};}),years={};
+ rows.forEach(r=>{const y=r.periodo.slice(0,4),t=years[y]=years[y]||{anio:y,meses:0,devengado:0,pagado:0,comps:{}};t.meses++;t.devengado+=r.devengado;t.pagado+=r.pagado;Object.values(r.lines).forEach(l=>{t.comps[l.componente]=(t.comps[l.componente]||0)+l.monto;});});
+ return {rows,years:Object.values(years).sort((a,b)=>a.anio.localeCompare(b.anio))};
+}
+const api={months,pendingByLiq,fifo,combos,matchPlanilla,businessDays,monthsWorked,vacation,history,OBLIGS};
 if(typeof module!=='undefined')module.exports=api;
 if(!root.document)return;
 
@@ -107,14 +132,16 @@ async function act(el,fn,ok){
 }
 function draw(el){
  const ms=months(liqs(),imps()),tot=ms.reduce((a,r)=>({dev:a.dev+r.devengado,pag:a.pag+r.pagado}),{dev:0,pag:0});
- const tabs=[['meses','Por mes'],['pagos','Pagos imputados'],['planilla','Planilla vs caja'],['buscar','Buscar egresos']];
+ const tabs=[['meses','Por mes'],['historico','Histórico'],['pagos','Pagos imputados'],['planilla','Planilla vs caja'],['buscar','Buscar egresos']];
+ const obTabs=`<div class="oc-tabs lq-obligs">${Object.entries(OBLIGS).map(([k,o])=>`<button class="oc-tab${s.ob===k?' active':''}" data-lq-ob="${k}">${esc(o.label)}</button>`).join('')}<button class="oc-tab${s.ob==='RRHH'?' active':''}" data-lq-ob="RRHH">RRHH · personas y vacaciones</button></div>`;
+ if(s.ob==='RRHH'){el.innerHTML=`<p class="oc-eyebrow">RECURSOS HUMANOS · SOLO ALEX</p>${obTabs}${s.message?`<p role="status">${esc(s.message)}</p>`:''}${s.data?viewRrhh():''}`;wire(el);return;}
  el.innerHTML=`<p class="oc-eyebrow">LIQUIDACIONES Y PAGOS FIJOS · SOLO ALEX</p>
- <div class="oc-tabs lq-obligs">${Object.entries(OBLIGS).map(([k,o])=>`<button class="oc-tab${s.ob===k?' active':''}" data-lq-ob="${k}">${esc(o.label)}</button>`).join('')}</div>
+ ${obTabs}
  <h2>${esc(O().label)}: lo que se debe y lo que se pagó</h2><p>${esc(O().intro)} Cada pago de la caja se reparte entre los meses y componentes que cubre.</p>
  ${s.message?`<p role="status">${esc(s.message)}</p>`:''}
  ${s.data?`<div class="lq-kpis"><div><small>Devengado</small><b>${money(tot.dev)}</b></div><div><small>Pagado (imputado)</small><b>${money(tot.pag)}</b></div><div><small>Por pagar</small><b class="${tot.dev-tot.pag>0?'cn-bad':'cn-ok'}">${money(tot.dev-tot.pag)}</b></div></div>
  <div class="oc-tabs">${tabs.map(([k,l])=>`<button class="oc-tab${s.tab===k?' active':''}" data-lq-tab="${k}">${l}</button>`).join('')}</div>
- ${s.tab==='meses'?viewMonths(ms):s.tab==='pagos'?viewPaid():s.tab==='planilla'?viewPlanilla():viewSearch()}`:''}`;
+ ${s.tab==='meses'?viewMonths(ms):s.tab==='historico'?viewHistory(ms):s.tab==='pagos'?viewPaid():s.tab==='planilla'?viewPlanilla():viewSearch()}`:''}`;
  wire(el);
 }
 function viewMonths(ms){
@@ -124,6 +151,65 @@ function viewMonths(ms){
  ${ms.map(r=>`<tr><td><b>${esc(perLabel(r.periodo))}</b></td>${comps.map(c=>`<td>${cell(r,c[0])}</td>`).join('')}<td>${money(r.devengado)}</td><td>${money(r.pagado)}</td><td class="${r.saldo>0?'cn-bad':r.saldo<0?'cn-warn':'cn-ok'}">${r.saldo===0?'✓':money(r.saldo)}</td></tr>`).join('')}
  </tbody></table></div><p><small>Toca un monto para editarlo ese mes. Saldo rojo = falta pagar o imputar; negativo = se imputó más de lo devengado.</small></p>`
  :`<p>Aún no hay líneas. Genera ${esc(comps[0][1].toLowerCase())} desde el primer mes.</p>`}`;
+}
+function viewHistory(ms){
+ const comps=O().comps,h=history(ms);
+ if(!ms.length)return '<p>Aún no hay líneas para armar el histórico.</p>';
+ const max=Math.max(1,...h.rows.map(r=>Math.max(r.devengado,r.pagado))),W=Math.max(320,h.rows.length*46),H=150,colors=['#2f5f8a','#36765a','#b07a1f','#7d5ba6'];
+ const bars=h.rows.map((r,i)=>{let y=H-18;const x=i*46+10;const segs=comps.map((c,k)=>{const v=r.lines[c[0]]?.monto||0,hh=v/max*(H-30);y-=hh;return v?`<rect x="${x}" y="${y}" width="16" height="${hh}" fill="${colors[k%4]}"><title>${esc(c[1])} ${esc(perLabel(r.periodo))}: ${money(v)}</title></rect>`:'';}).join('');
+  const ph=r.pagado/max*(H-30);return segs+`<rect x="${x+18}" y="${H-18-ph}" width="12" height="${ph}" fill="#9aa5b1"><title>Pagado ${esc(perLabel(r.periodo))}: ${money(r.pagado)}</title></rect><text x="${x+14}" y="${H-4}" font-size="10" text-anchor="middle" fill="currentColor">${esc(perLabel(r.periodo))}</text>`;}).join('');
+ return `<div class="lq-kpis">${h.years.map(y=>`<div><small>${esc(y.anio)} · ${y.meses} meses</small><b>${money(y.devengado)}</b><small>${comps.map(c=>`${esc(c[1])} ${money(y.comps[c[0]]||0)}`).join(' · ')} · pagado ${money(y.pagado)}</small></div>`).join('')}</div>
+ <div class="oc-table-scroll"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Costo mensual por componente y pagado">${bars}</svg></div>
+ <p><small>${comps.map((c,k)=>`<span style="color:${colors[k%4]}">■</span> ${esc(c[1])}`).join(' · ')} · <span style="color:#9aa5b1">■</span> Pagado</small></p>
+ <div class="oc-table-scroll"><table class="lq-table"><thead><tr><th>Mes</th>${comps.map(c=>`<th>${esc(c[1])}</th>`).join('')}<th>Total</th><th>Pagado</th><th>Saldo del mes</th><th>Saldo acumulado</th></tr></thead><tbody>
+ ${h.rows.map(r=>`<tr><td><b>${esc(perLabel(r.periodo))}</b></td>${comps.map(c=>`<td>${r.lines[c[0]]?money(r.lines[c[0]].monto):'—'}</td>`).join('')}<td>${money(r.devengado)}</td><td>${money(r.pagado)}</td><td>${r.saldo===0?'✓':money(r.saldo)}</td><td class="${r.acumulado>0?'cn-bad':r.acumulado<0?'cn-warn':'cn-ok'}">${money(r.acumulado)}</td></tr>`).join('')}
+ </tbody></table></div><p><small>Saldo acumulado positivo = se debe; negativo = se pagó (imputó) por adelantado.</small></p>`;
+}
+const workers=()=>s.data?.trabajadores||[];
+const events=()=>s.data?.eventos||[];
+const EVT={VACACIONES:'Vacaciones',LICENCIA:'Licencia médica',PERMISO:'Permiso',AUSENCIA:'Ausencia',OTRO:'Otro'};
+function viewRrhh(){
+ const ws=workers(),t=today();
+ if(!ws.length)return `<p>Ficha de cada trabajador con sus datos de contrato, vacaciones (15 días hábiles al año, 1,25 por mes trabajado), licencias y permisos.</p>
+  <p><button data-rr-new="JT">Crear ficha de José Tomás Molina (JT)</button> <button data-rr-new="">Agregar otro trabajador</button></p>`;
+ return ws.map(w=>{const v=vacation(w,events(),t),ev=events().filter(e=>e.trabajador_id===w.trabajador_id).sort((a,b)=>b.desde.localeCompare(a.desde));
+  return `<article class="oc-card"><h2>${esc(w.nombre)}</h2><p><small>${[w.cargo,w.rut&&'RUT '+w.rut,w.tipo_contrato,w.jornada,w.fecha_ingreso&&'Ingreso '+fmtDate(w.fecha_ingreso),w.fecha_termino&&'Término '+fmtDate(w.fecha_termino)].filter(Boolean).map(esc).join(' · ')}</small></p>
+  <p><small>${[w.afp&&'AFP '+w.afp,w.salud&&'Salud '+w.salud,w.sueldo_base!==''&&w.sueldo_base!==undefined&&'Sueldo base '+money(Number(w.sueldo_base)),w.banco&&w.banco+(w.cuenta?' '+w.cuenta:''),w.email,w.telefono].filter(Boolean).map(esc).join(' · ')}</small></p>
+  <div class="lq-kpis"><div><small>Vacaciones disponibles</small><b class="${v.saldo<0?'cn-bad':'cn-ok'}">${v.saldo} días</b><small>${v.inicial?v.inicial+' iniciales + ':''}${v.devengado} devengados (${v.meses} meses × ${v.anual}/12) − ${v.tomado} tomados</small></div>
+  <div><small>Licencias</small><b>${v.licencia} días</b></div><div><small>Permisos</small><b>${v.permiso} días</b></div><div><small>Ausencias</small><b>${v.ausencia} días</b></div></div>
+  ${w.fecha_ingreso?'':'<p class="cn-bad"><small>Falta la fecha de ingreso: sin ella no se calculan las vacaciones.</small></p>'}
+  <p><button data-rr-edit="${esc(w.trabajador_id)}">Editar ficha</button> <button data-rr-evt="${esc(w.trabajador_id)}">Registrar vacaciones / licencia / permiso</button></p>
+  ${ev.length?`<div class="oc-table-scroll"><table class="lq-table"><thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Nota</th><th></th></tr></thead><tbody>${ev.map(e=>`<tr><td>${esc(EVT[e.tipo]||e.tipo)}</td><td>${esc(fmtDate(e.desde))}</td><td>${esc(fmtDate(e.hasta))}</td><td>${e.dias}</td><td>${esc(e.nota)}</td><td><button class="lq-link" data-rr-evedit="${esc(e.evento_id)}">editar</button></td></tr>`).join('')}</tbody></table></div>`:'<p><small>Sin vacaciones ni licencias registradas.</small></p>'}
+  ${w.notas?`<p><small>${esc(w.notas)}</small></p>`:''}</article>`;}).join('')+`<p><button data-rr-new="">Agregar trabajador</button></p>`;
+}
+function workerDialog(el,w,preset){
+ const v=w||preset||{},f=(k,l,type='text',extra='')=>`<label>${l}<input name="${k}" type="${type}" value="${esc(v[k]??'')}" ${extra}></label>`;
+ const d=dialog(`<form><h2>${w?'Editar ficha':'Nueva ficha'}</h2><div class="oc-caja-form">
+  ${f('nombre','Nombre','text','required maxlength="120"')}${f('rut','RUT')}${f('cargo','Cargo')}${f('fecha_ingreso','Fecha de ingreso','date','required')}${f('fecha_termino','Fecha de término','date')}
+  <label>Tipo de contrato<select name="tipo_contrato">${['','Indefinido','Plazo fijo','Por obra','Honorarios'].map(o=>`<option${(v.tipo_contrato||'')===o?' selected':''}>${o}</option>`).join('')}</select></label>
+  ${f('jornada','Jornada')}${f('afp','AFP')}${f('salud','Salud (Fonasa / Isapre)')}${f('sueldo_base','Sueldo base','number','min="0" step="1"')}
+  ${f('dias_vacaciones_anuales','Días de vacaciones al año','number','min="0" step="0.5" placeholder="15"')}${f('vacaciones_saldo_inicial','Saldo inicial de vacaciones (días)','number','min="0" step="0.5"')}
+  <label>Liga con sueldos<select name="persona_liq"><option value="">—</option>${Object.entries(OBLIGS).filter(([k])=>k==='JT').map(([k,o])=>`<option value="${k}"${v.persona_liq===k?' selected':''}>${esc(o.label)}</option>`).join('')}</select></label>
+  ${f('email','Correo','email')}${f('telefono','Teléfono')}${f('banco','Banco')}${f('cuenta','Cuenta')}
+  <label>Notas<input name="notas" maxlength="1000" value="${esc(v.notas||'')}"></label></div>
+  <p role="status"></p><button type="submit">Guardar</button> <button type="button" data-lq-cancel>Cancelar</button></form>`);
+ d.querySelector('form').onsubmit=async e=>{e.preventDefault();const r=Object.fromEntries(new FormData(e.target));d.close();
+  await act(el,()=>call('rrhhSave',{expectedVersion:w?w.version:0,record:{...r,trabajador_id:w?.trabajador_id||''}}),'Ficha guardada.');};
+}
+function eventDialog(el,workerId,ev){
+ const v=ev||{tipo:'VACACIONES',desde:today(),hasta:today(),dias:businessDays(today(),today())};
+ const d=dialog(`<form><h2>${ev?'Editar':'Registrar'} · ${esc(workers().find(w=>w.trabajador_id===workerId)?.nombre||'')}</h2><div class="oc-caja-form">
+  <label>Tipo<select name="tipo">${Object.entries(EVT).map(([k,l])=>`<option value="${k}"${v.tipo===k?' selected':''}>${l}</option>`).join('')}</select></label>
+  <label>Desde<input name="desde" type="date" required value="${esc(v.desde)}"></label><label>Hasta<input name="hasta" type="date" required value="${esc(v.hasta)}"></label>
+  <label>Días<input name="dias" type="number" min="0" step="0.5" required value="${esc(v.dias)}"></label>
+  <label>Nota<input name="nota" maxlength="300" value="${esc(v.nota||'')}"></label></div>
+  <p><small>Se calculan los días hábiles (lunes a viernes). Si hay feriados, corrige los días a mano. Licencias y permisos se cuentan en días corridos o hábiles según corresponda.</small></p>
+  <p role="status"></p><button type="submit">Guardar</button> <button type="button" data-lq-cancel>Cancelar</button>${ev?' <button type="button" id="rr-void" class="oc-danger">Anular</button>':''}</form>`);
+ const fm=d.querySelector('form'),upd=()=>{const a=fm.desde.value,b=fm.hasta.value;if(fm.tipo.value==='VACACIONES')fm.dias.value=businessDays(a,b);else if(a&&b&&b>=a)fm.dias.value=Math.round((Date.parse(b)-Date.parse(a))/864e5)+1;};
+ fm.desde.onchange=()=>{if(fm.hasta.value<fm.desde.value)fm.hasta.value=fm.desde.value;upd();};fm.hasta.onchange=upd;fm.tipo.onchange=upd;
+ fm.onsubmit=async e=>{e.preventDefault();const r=Object.fromEntries(new FormData(fm));d.close();
+  await act(el,()=>call('rrhhEvent',{expectedVersion:ev?ev.version:0,record:{...r,dias:Number(r.dias),trabajador_id:workerId,evento_id:ev?.evento_id||''}}),'Registrado.');};
+ const vd=d.querySelector('#rr-void');if(vd)vd.onclick=async()=>{if(!confirm('¿Anular este registro?'))return;d.close();await act(el,()=>call('rrhhVoid',{id:ev.evento_id,expectedVersion:ev.version}),'Registro anulado.');};
 }
 function cell(r,comp){const l=r.lines[comp];return l?`<button class="lq-link" data-lq-edit="${esc(l.liquidacion_id)}">${money(l.monto)}</button>`:`<button class="lq-link lq-empty" data-lq-add="${esc(r.periodo)}|${comp}">+ agregar</button>`;}
 function byMovement(){const g={};imps().forEach(i=>{(g[i.movimiento_id]=g[i.movimiento_id]||[]).push(i);});return g;}
@@ -193,7 +279,7 @@ function allocDialog(el,m){
  const pend=pendingByLiq(liqs(),imps(),m.id).sort((a,b)=>a.periodo.localeCompare(b.periodo)||compOrder(s.ob,a.componente)-compOrder(s.ob,b.componente));
  const preset=Object.keys(current).length?current:fifo(pend,m.amount,s.ob);
  const rows=pend.filter(l=>l.pendiente>0||preset[l.liquidacion_id]);
- const comps=O().comps,lastComp=comps[comps.length-1];
+ const comps=O().comps,lastComp=comps.find(c=>c[0]==='VARIABLE')||comps[comps.length-1];
  const d=dialog(`<form class="lq-alloc"><h2>Imputar pago · ${esc(O().label)}</h2><p>${esc(m.account)} · ${esc(fmtDate(m.date))} · ${esc(m.description)} · <b>${money(m.amount)}</b></p>
   ${rows.length?`<div class="oc-table-scroll"><table class="lq-table"><thead><tr><th>Línea</th><th>Pendiente</th><th>Imputar</th></tr></thead><tbody>${rows.map(l=>`<tr><td>${esc(liqName(l.liquidacion_id))}</td><td>${money(l.pendiente)}</td><td><input type="number" min="0" step="1" inputmode="numeric" data-lq-amt="${esc(l.liquidacion_id)}" value="${preset[l.liquidacion_id]||''}"></td></tr>`).join('')}</tbody></table></div>`:'<p>No hay líneas pendientes. Agrega la línea del mes primero.</p>'}
   <details><summary>Agregar una línea de un mes y cargarle parte de este pago</summary><div class="oc-caja-form"><label>Mes<input type="month" id="lq-nv-per" value="${esc(addMonths((m.date||today()).slice(0,7),s.ob==='JT'?-1:0))}"></label><label>Componente<select id="lq-nv-comp">${comps.map(c=>`<option value="${c[0]}"${c===lastComp?' selected':''}>${esc(c[1])}</option>`).join('')}</select></label><label>Monto<input type="number" min="1" step="1" id="lq-nv-amt"></label></div><button type="button" id="lq-nv">Crear línea</button></details>
@@ -240,6 +326,10 @@ function wire(el){
  el.querySelectorAll('[data-lq-alloc]').forEach(b=>b.onclick=()=>allocDialog(el,movements().find(m=>m.id===b.dataset.lqAlloc)));
  el.querySelectorAll('[data-lq-cashrow]').forEach(b=>b.onclick=()=>cashDialog(el,O().planilla.find(r=>String(r.n)===b.dataset.lqCashrow)));
  const cash=el.querySelector('#lq-cash');if(cash)cash.onclick=()=>cashDialog(el,null);
+ el.querySelectorAll('[data-rr-new]').forEach(b=>b.onclick=()=>workerDialog(el,null,b.dataset.rrNew==='JT'?{nombre:'José Tomás Molina Barros',rut:'17.088.502-3',persona_liq:'JT',sueldo_base:3000000,dias_vacaciones_anuales:15}:{dias_vacaciones_anuales:15}));
+ el.querySelectorAll('[data-rr-edit]').forEach(b=>b.onclick=()=>workerDialog(el,workers().find(w=>w.trabajador_id===b.dataset.rrEdit)));
+ el.querySelectorAll('[data-rr-evt]').forEach(b=>b.onclick=()=>eventDialog(el,b.dataset.rrEvt,null));
+ el.querySelectorAll('[data-rr-evedit]').forEach(b=>b.onclick=()=>{const e=events().find(x=>x.evento_id===b.dataset.rrEvedit);if(e)eventDialog(el,e.trabajador_id,e);});
  const q=el.querySelector('#lq-q');if(q)q.onchange=()=>{s.search=q.value;draw(el);};
  const mo=el.querySelector('#lq-m');if(mo)mo.onchange=()=>{s.month=mo.value;draw(el);};
 }

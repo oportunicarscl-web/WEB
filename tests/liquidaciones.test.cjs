@@ -24,3 +24,17 @@ assert.strictEqual(C.suggest({description:'DEPOSITO TUTU MP',socio:''},so),'Gonz
 assert.strictEqual(C.suggest({description:'concept cca',socio:'ALEX'},so),'Alex');
 assert.strictEqual(C.suggest({description:'concept cca',socio:''},so),'');
 console.log('liquidaciones ok');
+{
+ const L=require('../liquidaciones.js'),assert=require('assert');
+ assert.equal(L.businessDays('2026-11-02','2026-11-13'),10);
+ assert.equal(L.businessDays('2026-11-07','2026-11-08'),0);
+ assert.equal(L.monthsWorked('2025-11-15','2026-11-14'),11);
+ assert.equal(L.monthsWorked('2025-11-15','2026-11-15'),12);
+ const v=L.vacation({trabajador_id:'a',fecha_ingreso:'2025-11-15',dias_vacaciones_anuales:15,vacaciones_saldo_inicial:2},[{trabajador_id:'a',tipo:'VACACIONES',dias:5},{trabajador_id:'a',tipo:'LICENCIA',dias:3},{trabajador_id:'b',tipo:'VACACIONES',dias:9}],'2026-11-15');
+ assert.deepEqual([v.devengado,v.tomado,v.saldo,v.licencia],[15,5,12,3]);
+ const ms=L.months([{liquidacion_id:'1',persona:'JT',periodo:'2026-01',componente:'BASE',monto:3000000},{liquidacion_id:'2',persona:'JT',periodo:'2026-01',componente:'IMPOSICIONES',monto:400000},{liquidacion_id:'3',persona:'JT',periodo:'2026-02',componente:'BASE',monto:3000000}],[{liquidacion_id:'1',monto:3000000},{liquidacion_id:'3',monto:3500000}]);
+ const h=L.history(ms);
+ assert.deepEqual(h.rows.map(r=>r.acumulado),[400000,-100000]);
+ assert.equal(h.years[0].comps.IMPOSICIONES,400000);
+ console.log('rrhh ok');
+}
