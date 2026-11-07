@@ -53,8 +53,8 @@ function ocLiqData_(){
   liquidaciones:ocLiqTable_('LIQUIDACIONES').rows.filter(ocProd_).map(ocLiqRow_),
   imputaciones:ocLiqTable_('IMPUTACIONES_SUELDO').rows.filter(ocProd_).map(r=>{const x=osClean_(r);x.monto=Number(r.monto)||0;return x;}),
   conceptId:OC_LIQ_CONCEPT.concepto_id,
-  trabajadores:ocLiqTable_('TRABAJADORES').rows.filter(ocProd_).map(r=>{const x=osClean_(r);['fecha_ingreso','fecha_termino'].forEach(k=>{x[k]=osDate_(r[k])||'';});['sueldo_base','dias_vacaciones_anuales','vacaciones_saldo_inicial'].forEach(k=>{x[k]=r[k]===''?'':Number(r[k]);});x.version=Number(r.version||1);return x;}),
-  eventos:ocLiqTable_('RRHH_EVENTOS').rows.filter(ocProd_).map(r=>{const x=osClean_(r);x.desde=osDate_(r.desde)||'';x.hasta=osDate_(r.hasta)||'';x.dias=Number(r.dias)||0;x.version=Number(r.version||1);return x;}),
+  trabajadores:ocLiqTable_('TRABAJADORES').rows.filter(ocProd_).map(r=>{const x=osClean_(r);['fecha_ingreso','fecha_termino'].forEach(k=>{x[k]=osDate_(String(x[k]||''))?String(x[k]):'';});['sueldo_base','dias_vacaciones_anuales','vacaciones_saldo_inicial'].forEach(k=>{x[k]=r[k]===''?'':Number(r[k]);});x.version=Number(r.version||1);return x;}),
+  eventos:ocLiqTable_('RRHH_EVENTOS').rows.filter(ocProd_).map(r=>{const x=osClean_(r);x.desde=osDate_(String(x.desde||''))?String(x.desde):'';x.hasta=osDate_(String(x.hasta||''))?String(x.hasta):'';x.dias=Number(r.dias)||0;x.version=Number(r.version||1);return x;}),
   obligaciones:Object.keys(OC_LIQ_OBLIG).reduce((o,k)=>{o[k]={concept:OC_LIQ_OBLIG[k].concept,comps:OC_LIQ_OBLIG[k].comps,compConcept:OC_LIQ_OBLIG[k].compConcept||{}};return o;},{})
  };
 }
@@ -137,7 +137,8 @@ function ocLiqAllocate_(p,actor){
 }
 
 // ---------- RRHH (solo Alex): ficha del trabajador y eventos ----------
-function ocRrhhDate_(v,label,req){const d=osDate_(v);if(!d&&req)throw Error('Fecha inválida: '+label);if(v&&!d)throw Error('Fecha inválida: '+label);return d||'';}
+// osDate_ solo valida (devuelve true/false): la fecha se guarda como texto AAAA-MM-DD.
+function ocRrhhDate_(v,label,req){const s=String(v||'').trim();if(!s){if(req)throw Error('Fecha inválida: '+label);return '';}if(!osDate_(s))throw Error('Fecha inválida: '+label);return s;}
 function ocRrhhNum_(v,label,max){if(v===''||v===null||v===undefined)return '';const n=Number(v);if(!isFinite(n)||n<0||n>max)throw Error('Valor inválido: '+label);return Math.round(n*100)/100;}
 function ocRrhhSave_(p,actor){
  const r=p.record||{},t=ocLiqTable_('TRABAJADORES'),txt=(k,n)=>String(r[k]||'').trim().slice(0,n||120);
