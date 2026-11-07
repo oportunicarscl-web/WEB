@@ -38,3 +38,12 @@ console.log('liquidaciones ok');
  assert.equal(h.years[0].comps.IMPOSICIONES,400000);
  console.log('rrhh ok');
 }
+{
+ const L=require('../liquidaciones.js'),assert=require('assert');
+ assert.equal(L.businessDays('2026-09-14','2026-09-25'),9); // 18-09 feriado
+ const v=L.vacation({trabajador_id:'a',fecha_ingreso:'2015-03-01',anios_previos:5,dias_vacaciones_anuales:15},[],'2026-11-07');
+ assert.equal(v.progresivo,2);assert.equal(v.anual,17);assert.equal(v.periodos.length,12);assert.ok(v.acumulaExceso);
+ const w=L.vacation({trabajador_id:'b',fecha_ingreso:'2025-11-01'},[{trabajador_id:'b',tipo:'VACACIONES',desde:'2026-02-02',dias:5}],'2026-11-07');
+ assert.deepEqual([w.periodos.length,w.periodos[0].tomado,w.periodos[1].completo,w.progresivo],[2,5,false,0]);
+ console.log('rrhh2 ok');
+}

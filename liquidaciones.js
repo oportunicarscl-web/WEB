@@ -77,31 +77,48 @@ function matchPlanilla(rows,movements,imputed){
  });
 }
 // ---------- RRHH ----------
-// Días hábiles (lunes a viernes) entre dos fechas, ambas incluidas. Los feriados se descuentan a mano editando los días.
-function businessDays(a,b){
- if(!/^\d{4}-\d{2}-\d{2}$/.test(a||'')||!/^\d{4}-\d{2}-\d{2}$/.test(b||'')||b<a)return 0;
- let n=0;for(let d=new Date(a+'T12:00:00Z');d.toISOString().slice(0,10)<=b;d.setUTCDate(d.getUTCDate()+1)){const w=d.getUTCDay();if(w!==0&&w!==6)n++;}return n;
+// Feriados legales de Chile (días que no cuentan como hábiles para vacaciones). Si falta uno, se corrigen los días a mano.
+const FERIADOS_CL=new Set([
+ '2025-01-01','2025-04-18','2025-04-19','2025-05-01','2025-05-21','2025-06-20','2025-06-29','2025-07-16','2025-08-15','2025-09-18','2025-09-19','2025-10-12','2025-10-31','2025-11-01','2025-11-16','2025-12-08','2025-12-14','2025-12-25',
+ '2026-01-01','2026-04-03','2026-04-04','2026-05-01','2026-05-21','2026-06-21','2026-06-29','2026-07-16','2026-08-15','2026-09-18','2026-09-19','2026-10-12','2026-10-31','2026-11-01','2026-12-08','2026-12-25',
+ '2027-01-01','2027-03-26','2027-03-27','2027-05-01','2027-05-21','2027-06-21','2027-06-28','2027-07-16','2027-08-15','2027-09-17','2027-09-18','2027-09-19','2027-10-11','2027-10-31','2027-11-01','2027-12-08','2027-12-25']);
+const isoOk=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||'');
+// Días hábiles (lunes a viernes, sin feriados) entre dos fechas, ambas incluidas.
+function businessDays(a,b,holidays=FERIADOS_CL){
+ if(!isoOk(a)||!isoOk(b)||b<a)return 0;
+ let n=0;for(let d=new Date(a+'T12:00:00Z');d.toISOString().slice(0,10)<=b;d.setUTCDate(d.getUTCDate()+1)){const w=d.getUTCDay(),k=d.toISOString().slice(0,10);if(w!==0&&w!==6&&!holidays.has(k))n++;}return n;
 }
 // Meses completos trabajados entre el ingreso y una fecha.
 function monthsWorked(from,to){
- if(!/^\d{4}-\d{2}-\d{2}$/.test(from||'')||!to||to<from)return 0;
+ if(!isoOk(from)||!to||to<from)return 0;
  let m=(Number(to.slice(0,4))-Number(from.slice(0,4)))*12+Number(to.slice(5,7))-Number(from.slice(5,7));if(Number(to.slice(8,10))<Number(from.slice(8,10)))m--;return Math.max(0,m);
 }
-// Feriado legal (Chile): 15 días hábiles por año = 1,25 por mes trabajado. Saldo = saldo inicial + devengado − tomado.
+const addYears=(iso,k)=>(Number(iso.slice(0,4))+k)+iso.slice(4);
+// Feriado legal (art. 67 y 68 CT): 15 días hábiles por año (1,25 por mes) + feriado progresivo:
+// con 10 años cotizados (máximo 10 con empleadores anteriores), un día más por cada 3 años nuevos con este empleador.
 function vacation(worker,events,asOf){
- const end=worker.fecha_termino&&worker.fecha_termino<asOf?worker.fecha_termino:asOf,anual=Number(worker.dias_vacaciones_anuales)||15;
- const meses=monthsWorked(worker.fecha_ingreso,end),devengado=Math.round(meses*anual/12*100)/100,inicial=Number(worker.vacaciones_saldo_inicial)||0;
+ const end=worker.fecha_termino&&worker.fecha_termino<asOf?worker.fecha_termino:asOf,base=Number(worker.dias_vacaciones_anuales)||15;
+ const meses=monthsWorked(worker.fecha_ingreso,end),anios=Math.floor(meses/12),previos=Math.min(10,Number(worker.anios_previos)||0);
+ const progresivo=previos+anios>=10&&previos>0?Math.floor((previos+anios-10)/3):0,anual=base+progresivo;
+ const devengado=Math.round(meses*anual/12*100)/100,inicial=Number(worker.vacaciones_saldo_inicial)||0;
  const own=(events||[]).filter(e=>e.trabajador_id===worker.trabajador_id),sum=t=>own.filter(e=>e.tipo===t).reduce((a,e)=>a+(Number(e.dias)||0),0);
- const tomado=sum('VACACIONES');
- return {meses,anual,devengado,inicial,tomado,saldo:Math.round((inicial+devengado-tomado)*100)/100,licencia:sum('LICENCIA'),permiso:sum('PERMISO'),ausencia:sum('AUSENCIA')};
+ const tomado=sum('VACACIONES'),saldo=Math.round((inicial+devengado-tomado)*100)/100;
+ // Períodos (años laborales): cuánto se ganó y cuánto se tomó en cada uno.
+ const periodos=[];if(isoOk(worker.fecha_ingreso)){for(let k=0;k<=anios;k++){const desde=addYears(worker.fecha_ingreso,k),hasta=addYears(worker.fecha_ingreso,k+1);if(desde>end)break;
+  const completo=hasta<=end,gan=completo?anual:Math.round(monthsWorked(desde,end)*anual/12*100)/100;
+  periodos.push({n:k+1,desde,hasta,completo,ganado:gan,tomado:own.filter(e=>e.tipo==='VACACIONES'&&e.desde>=desde&&e.desde<hasta).reduce((a,e)=>a+(Number(e.dias)||0),0)});}}
+ const sueldo=Number(worker.sueldo_base)||0,valorDia=sueldo/30;
+ return {meses,anios,anual,base,progresivo,devengado,inicial,tomado,saldo,periodos,acumulaExceso:saldo>anual*2,
+  valorPendiente:Math.round(Math.max(0,saldo)*7/5*valorDia),licencia:sum('LICENCIA'),permiso:sum('PERMISO'),ausencia:sum('AUSENCIA')};
 }
+const antiguedad=m=>`${Math.floor(m/12)} año${Math.floor(m/12)===1?'':'s'} y ${m%12} mes${m%12===1?'':'es'}`;
 // Histórico por año: totales por componente, devengado, pagado y saldo acumulado mes a mes.
 function history(ms){
  let acc=0;const rows=ms.map(r=>{acc+=r.saldo;return {...r,acumulado:acc};}),years={};
  rows.forEach(r=>{const y=r.periodo.slice(0,4),t=years[y]=years[y]||{anio:y,meses:0,devengado:0,pagado:0,comps:{}};t.meses++;t.devengado+=r.devengado;t.pagado+=r.pagado;Object.values(r.lines).forEach(l=>{t.comps[l.componente]=(t.comps[l.componente]||0)+l.monto;});});
  return {rows,years:Object.values(years).sort((a,b)=>a.anio.localeCompare(b.anio))};
 }
-const api={months,pendingByLiq,fifo,combos,matchPlanilla,businessDays,monthsWorked,vacation,history,OBLIGS};
+const api={months,pendingByLiq,fifo,combos,matchPlanilla,businessDays,monthsWorked,vacation,history,FERIADOS_CL,OBLIGS};
 if(typeof module!=='undefined')module.exports=api;
 if(!root.document)return;
 
@@ -170,17 +187,40 @@ const events=()=>s.data?.eventos||[];
 const EVT={VACACIONES:'Vacaciones',LICENCIA:'Licencia médica',PERMISO:'Permiso',AUSENCIA:'Ausencia',OTRO:'Otro'};
 function viewRrhh(){
  const ws=workers(),t=today();
- if(!ws.length)return `<p>Ficha de cada trabajador con sus datos de contrato, vacaciones (15 días hábiles al año, 1,25 por mes trabajado), licencias y permisos.</p>
+ if(!ws.length)return `<p>Ficha de cada trabajador con sus datos de contrato, vacaciones (15 días hábiles al año, 1,25 por mes trabajado, más feriado progresivo), licencias y permisos.</p>
   <p><button data-rr-new="JT">Crear ficha de José Tomás Molina (JT)</button> <button data-rr-new="">Agregar otro trabajador</button></p>`;
- return ws.map(w=>{const v=vacation(w,events(),t),ev=events().filter(e=>e.trabajador_id===w.trabajador_id).sort((a,b)=>b.desde.localeCompare(a.desde));
-  return `<article class="oc-card"><h2>${esc(w.nombre)}</h2><p><small>${[w.cargo,w.rut&&'RUT '+w.rut,w.tipo_contrato,w.jornada,w.fecha_ingreso&&'Ingreso '+fmtDate(w.fecha_ingreso),w.fecha_termino&&'Término '+fmtDate(w.fecha_termino)].filter(Boolean).map(esc).join(' · ')}</small></p>
+ const now=events().filter(e=>e.desde<=addDaysIso(t,30)&&e.hasta>=t).sort((a,b)=>a.desde.localeCompare(b.desde));
+ return (now.length?`<div class="oc-card"><h3>Ausencias en curso y próximas (30 días)</h3><ul>${now.map(e=>`<li>${esc(workers().find(w=>w.trabajador_id===e.trabajador_id)?.nombre||'')} · ${esc(EVT[e.tipo]||e.tipo)} · ${esc(fmtDate(e.desde))} al ${esc(fmtDate(e.hasta))} (${e.dias} días)${e.desde<=t?' · <b>en curso</b>':''}</li>`).join('')}</ul></div>`:'')+
+ ws.map(w=>{const v=vacation(w,events(),t),ev=events().filter(e=>e.trabajador_id===w.trabajador_id).sort((a,b)=>b.desde.localeCompare(a.desde));
+  const docs=String(w.documentos||'').split('\n').map(l=>l.split('|').map(x=>x.trim())).filter(x=>x[0]);
+  return `<article class="oc-card"><h2>${esc(w.nombre)}</h2><p><small>${[w.cargo,w.rut&&'RUT '+w.rut,w.tipo_contrato,w.jornada,w.fecha_ingreso&&'Ingreso '+fmtDate(w.fecha_ingreso),w.fecha_ingreso&&'Antigüedad '+antiguedad(v.meses),w.fecha_termino&&'Término '+fmtDate(w.fecha_termino)].filter(Boolean).map(esc).join(' · ')}</small></p>
   <p><small>${[w.afp&&'AFP '+w.afp,w.salud&&'Salud '+w.salud,w.sueldo_base!==''&&w.sueldo_base!==undefined&&'Sueldo base '+money(Number(w.sueldo_base)),w.banco&&w.banco+(w.cuenta?' '+w.cuenta:''),w.email,w.telefono].filter(Boolean).map(esc).join(' · ')}</small></p>
-  <div class="lq-kpis"><div><small>Vacaciones disponibles</small><b class="${v.saldo<0?'cn-bad':'cn-ok'}">${v.saldo} días</b><small>${v.inicial?v.inicial+' iniciales + ':''}${v.devengado} devengados (${v.meses} meses × ${v.anual}/12) − ${v.tomado} tomados</small></div>
-  <div><small>Licencias</small><b>${v.licencia} días</b></div><div><small>Permisos</small><b>${v.permiso} días</b></div><div><small>Ausencias</small><b>${v.ausencia} días</b></div></div>
+  <div class="lq-kpis"><div><small>Vacaciones disponibles</small><b class="${v.saldo<0||v.acumulaExceso?'cn-bad':'cn-ok'}">${v.saldo} días hábiles</b><small>${v.inicial?v.inicial+' iniciales + ':''}${v.devengado} ganados (${v.meses} meses × ${v.anual}/12) − ${v.tomado} tomados</small></div>
+  <div><small>Días por año</small><b>${v.anual}</b><small>${v.base} legales${v.progresivo?` + ${v.progresivo} progresivos`:''}</small></div>
+  <div><small>Valor referencial de lo pendiente</small><b>${money(v.valorPendiente)}</b><small>saldo × 7/5 días corridos × sueldo/30</small></div>
+  <div><small>Licencias · permisos · ausencias</small><b>${v.licencia} · ${v.permiso} · ${v.ausencia}</b><small>días</small></div></div>
   ${w.fecha_ingreso?'':'<p class="cn-bad"><small>Falta la fecha de ingreso: sin ella no se calculan las vacaciones.</small></p>'}
+  ${v.acumulaExceso?`<p class="cn-bad"><small>Acumula más de dos períodos de vacaciones (${v.saldo} días). El Código del Trabajo permite acumular hasta dos: conviene programar vacaciones.</small></p>`:''}
   <p><button data-rr-edit="${esc(w.trabajador_id)}">Editar ficha</button> <button data-rr-evt="${esc(w.trabajador_id)}">Registrar vacaciones / licencia / permiso</button></p>
-  ${ev.length?`<div class="oc-table-scroll"><table class="lq-table"><thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Nota</th><th></th></tr></thead><tbody>${ev.map(e=>`<tr><td>${esc(EVT[e.tipo]||e.tipo)}</td><td>${esc(fmtDate(e.desde))}</td><td>${esc(fmtDate(e.hasta))}</td><td>${e.dias}</td><td>${esc(e.nota)}</td><td><button class="lq-link" data-rr-evedit="${esc(e.evento_id)}">editar</button></td></tr>`).join('')}</tbody></table></div>`:'<p><small>Sin vacaciones ni licencias registradas.</small></p>'}
+  ${v.periodos.length?`<details><summary>Vacaciones por período</summary><div class="oc-table-scroll"><table class="lq-table"><thead><tr><th>Período</th><th>Desde</th><th>Hasta</th><th>Ganados</th><th>Tomados</th></tr></thead><tbody>${v.periodos.map(p=>`<tr><td>${p.n}${p.completo?'':' (en curso)'}</td><td>${esc(fmtDate(p.desde))}</td><td>${esc(fmtDate(p.hasta))}</td><td>${p.ganado}</td><td>${p.tomado}</td></tr>`).join('')}</tbody></table></div></details>`:''}
+  ${ev.length?`<div class="oc-table-scroll"><table class="lq-table"><thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Nota</th><th></th></tr></thead><tbody>${ev.map(e=>`<tr><td>${esc(EVT[e.tipo]||e.tipo)}</td><td>${esc(fmtDate(e.desde))}</td><td>${esc(fmtDate(e.hasta))}</td><td>${e.dias}</td><td>${esc(e.nota)}</td><td><button class="lq-link" data-rr-evedit="${esc(e.evento_id)}">editar</button>${e.tipo==='VACACIONES'?` <button class="lq-link" data-rr-comp="${esc(e.evento_id)}">comprobante</button>`:''}</td></tr>`).join('')}</tbody></table></div>`:'<p><small>Sin vacaciones ni licencias registradas.</small></p>'}
+  ${docs.length?`<p><small>Documentos: ${docs.map(d=>/^https?:\/\//.test(d[1]||'')?`<a href="${esc(d[1])}" target="_blank" rel="noopener">${esc(d[0])}</a>`:esc(d.join(' '))).join(' · ')}</small></p>`:''}
   ${w.notas?`<p><small>${esc(w.notas)}</small></p>`:''}</article>`;}).join('')+`<p><button data-rr-new="">Agregar trabajador</button></p>`;
+}
+function addDaysIso(iso,k){const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+k);return d.toISOString().slice(0,10);}
+// Comprobante de feriado (art. 67 CT): documento para imprimir y firmar por ambas partes.
+function comprobante(ev){
+ const w=workers().find(x=>x.trabajador_id===ev.trabajador_id);if(!w)return;
+ const evs=events().filter(e=>e.trabajador_id===w.trabajador_id&&e.evento_id!==ev.evento_id&&e.desde<=ev.desde),before=vacation(w,evs,ev.desde),after=Math.round((before.saldo-Number(ev.dias))*100)/100;
+ const win=window.open('','_blank');if(!win){s.message='El navegador bloqueó la ventana del comprobante.';return;}
+ win.document.write(`<!doctype html><html lang="es"><meta charset="utf-8"><title>Comprobante de feriado · ${esc(w.nombre)}</title>
+ <style>body{font:15px/1.6 Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#111}h1{font-size:20px;text-align:center}td{padding:4px 8px;border-bottom:1px solid #ddd}.f{display:flex;justify-content:space-between;margin-top:90px}.f div{border-top:1px solid #111;width:42%;text-align:center;padding-top:6px}@media print{button{display:none}}</style>
+ <h1>COMPROBANTE DE FERIADO LEGAL</h1><p>En Santiago, a ${esc(fmtDate(today()))}, se deja constancia de que el trabajador individualizado hace uso de su feriado legal:</p>
+ <table><tr><td>Empleador</td><td>Oportuni Cars SpA · RUT 78.331.651-K</td></tr><tr><td>Trabajador</td><td>${esc(w.nombre)}${w.rut?' · RUT '+esc(w.rut):''}</td></tr><tr><td>Cargo</td><td>${esc(w.cargo||'')}</td></tr>
+ <tr><td>Fecha de ingreso</td><td>${esc(fmtDate(w.fecha_ingreso))}</td></tr><tr><td>Período</td><td>${esc(fmtDate(ev.desde))} al ${esc(fmtDate(ev.hasta))}</td></tr><tr><td>Días hábiles</td><td>${ev.dias}</td></tr>
+ <tr><td>Saldo antes</td><td>${before.saldo} días hábiles</td></tr><tr><td>Saldo después</td><td>${after} días hábiles</td></tr>${ev.nota?`<tr><td>Observación</td><td>${esc(ev.nota)}</td></tr>`:''}</table>
+ <p>Retoma sus funciones el día hábil siguiente al término del período.</p><div class="f"><div>Empleador</div><div>Trabajador</div></div><p><button onclick="print()">Imprimir</button></p></html>`);
+ win.document.close();
 }
 function workerDialog(el,w,preset){
  const v=w||preset||{},f=(k,l,type='text',extra='')=>`<label>${l}<input name="${k}" type="${type}" value="${esc(v[k]??'')}" ${extra}></label>`;
@@ -188,10 +228,11 @@ function workerDialog(el,w,preset){
   ${f('nombre','Nombre','text','required maxlength="120"')}${f('rut','RUT')}${f('cargo','Cargo')}${f('fecha_ingreso','Fecha de ingreso','date','required')}${f('fecha_termino','Fecha de término','date')}
   <label>Tipo de contrato<select name="tipo_contrato">${['','Indefinido','Plazo fijo','Por obra','Honorarios'].map(o=>`<option${(v.tipo_contrato||'')===o?' selected':''}>${o}</option>`).join('')}</select></label>
   ${f('jornada','Jornada')}${f('afp','AFP')}${f('salud','Salud (Fonasa / Isapre)')}${f('sueldo_base','Sueldo base','number','min="0" step="1"')}
-  ${f('dias_vacaciones_anuales','Días de vacaciones al año','number','min="0" step="0.5" placeholder="15"')}${f('vacaciones_saldo_inicial','Saldo inicial de vacaciones (días)','number','min="0" step="0.5"')}
+  ${f('dias_vacaciones_anuales','Días de vacaciones al año','number','min="0" step="0.5" placeholder="15"')}${f('vacaciones_saldo_inicial','Saldo inicial de vacaciones (días)','number','min="0" step="0.5"')}${f('anios_previos','Años cotizados con empleadores anteriores (feriado progresivo)','number','min="0" max="40" step="1"')}
   <label>Liga con sueldos<select name="persona_liq"><option value="">—</option>${Object.entries(OBLIGS).filter(([k])=>k==='JT').map(([k,o])=>`<option value="${k}"${v.persona_liq===k?' selected':''}>${esc(o.label)}</option>`).join('')}</select></label>
   ${f('email','Correo','email')}${f('telefono','Teléfono')}${f('banco','Banco')}${f('cuenta','Cuenta')}
-  <label>Notas<input name="notas" maxlength="1000" value="${esc(v.notas||'')}"></label></div>
+  <label>Notas<input name="notas" maxlength="1000" value="${esc(v.notas||'')}"></label>
+  <label>Documentos (uno por línea: nombre | enlace)<textarea name="documentos" rows="3" maxlength="3000" placeholder="Contrato | https://drive.google.com/...">${esc(v.documentos||'')}</textarea></label></div>
   <p role="status"></p><button type="submit">Guardar</button> <button type="button" data-lq-cancel>Cancelar</button></form>`);
  d.querySelector('form').onsubmit=async e=>{e.preventDefault();const r=Object.fromEntries(new FormData(e.target));d.close();
   await act(el,()=>call('rrhhSave',{expectedVersion:w?w.version:0,record:{...r,trabajador_id:w?.trabajador_id||''}}),'Ficha guardada.');};
@@ -203,7 +244,7 @@ function eventDialog(el,workerId,ev){
   <label>Desde<input name="desde" type="date" required value="${esc(v.desde)}"></label><label>Hasta<input name="hasta" type="date" required value="${esc(v.hasta)}"></label>
   <label>Días<input name="dias" type="number" min="0" step="0.5" required value="${esc(v.dias)}"></label>
   <label>Nota<input name="nota" maxlength="300" value="${esc(v.nota||'')}"></label></div>
-  <p><small>Se calculan los días hábiles (lunes a viernes). Si hay feriados, corrige los días a mano. Licencias y permisos se cuentan en días corridos o hábiles según corresponda.</small></p>
+  <p><small>Vacaciones: se cuentan días hábiles (lunes a viernes, sin feriados legales). Licencias, permisos y ausencias: días corridos. Puedes corregir los días a mano.</small></p>
   <p role="status"></p><button type="submit">Guardar</button> <button type="button" data-lq-cancel>Cancelar</button>${ev?' <button type="button" id="rr-void" class="oc-danger">Anular</button>':''}</form>`);
  const fm=d.querySelector('form'),upd=()=>{const a=fm.desde.value,b=fm.hasta.value;if(fm.tipo.value==='VACACIONES')fm.dias.value=businessDays(a,b);else if(a&&b&&b>=a)fm.dias.value=Math.round((Date.parse(b)-Date.parse(a))/864e5)+1;};
  fm.desde.onchange=()=>{if(fm.hasta.value<fm.desde.value)fm.hasta.value=fm.desde.value;upd();};fm.hasta.onchange=upd;fm.tipo.onchange=upd;
@@ -329,6 +370,7 @@ function wire(el){
  el.querySelectorAll('[data-rr-new]').forEach(b=>b.onclick=()=>workerDialog(el,null,b.dataset.rrNew==='JT'?{nombre:'José Tomás Molina Barros',rut:'17.088.502-3',persona_liq:'JT',sueldo_base:3000000,dias_vacaciones_anuales:15}:{dias_vacaciones_anuales:15}));
  el.querySelectorAll('[data-rr-edit]').forEach(b=>b.onclick=()=>workerDialog(el,workers().find(w=>w.trabajador_id===b.dataset.rrEdit)));
  el.querySelectorAll('[data-rr-evt]').forEach(b=>b.onclick=()=>eventDialog(el,b.dataset.rrEvt,null));
+ el.querySelectorAll('[data-rr-comp]').forEach(b=>b.onclick=()=>{const e=events().find(x=>x.evento_id===b.dataset.rrComp);if(e)comprobante(e);});
  el.querySelectorAll('[data-rr-evedit]').forEach(b=>b.onclick=()=>{const e=events().find(x=>x.evento_id===b.dataset.rrEvedit);if(e)eventDialog(el,e.trabajador_id,e);});
  const q=el.querySelector('#lq-q');if(q)q.onchange=()=>{s.search=q.value;draw(el);};
  const mo=el.querySelector('#lq-m');if(mo)mo.onchange=()=>{s.month=mo.value;draw(el);};

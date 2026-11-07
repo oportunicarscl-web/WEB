@@ -7,7 +7,7 @@ const OC_LIQ_TABLES={
  LIQUIDACIONES:['liquidacion_id','persona','periodo','componente','monto','nota'],
  IMPUTACIONES_SUELDO:['imputacion_id','movimiento_id','liquidacion_id','persona','monto'],
  // RRHH (solo Alex): ficha del trabajador y eventos (vacaciones, licencias, permisos, ausencias).
- TRABAJADORES:['trabajador_id','persona_liq','nombre','rut','cargo','fecha_ingreso','fecha_termino','tipo_contrato','jornada','afp','salud','sueldo_base','dias_vacaciones_anuales','vacaciones_saldo_inicial','email','telefono','banco','cuenta','notas'],
+ TRABAJADORES:['trabajador_id','persona_liq','nombre','rut','cargo','fecha_ingreso','fecha_termino','tipo_contrato','jornada','afp','salud','sueldo_base','dias_vacaciones_anuales','vacaciones_saldo_inicial','anios_previos','email','telefono','banco','cuenta','notas','documentos'],
  RRHH_EVENTOS:['evento_id','trabajador_id','tipo','desde','hasta','dias','nota']
 };
 const OC_LIQ_META=['ambiente','estado_registro','version','created_at','created_by','updated_at','updated_by'];
@@ -33,12 +33,12 @@ function ocLiqExtra_(p,actor){
 }
 // Crea las hojas y el concepto «Sueldo JT» la primera vez (sin pasos manuales).
 function ocLiqEnsure_(){
- const props=PropertiesService.getScriptProperties();if(props.getProperty('OC_LIQ_READY')==='4')return;
+ const props=PropertiesService.getScriptProperties();if(props.getProperty('OC_LIQ_READY')==='5')return;
  const book=SpreadsheetApp.openById(ocProperty_('OC_FINANZAS_ID'));
  Object.keys(OC_LIQ_TABLES).forEach(n=>osEnsure_(book,n,OC_LIQ_TABLES[n].concat(OC_LIQ_META)));
  const c=ocTable_('OC_MAESTROS_ID','CONCEPTOS_CAJA');
  OC_LIQ_CONCEPTS.forEach(k=>{if(!c.rows.some(r=>r.concepto_id===k.concepto_id)){ocPatchRow_(c,c.sheet.getLastRow()+1,k);c.rows.push(k);}});
- props.setProperty('OC_LIQ_READY','4');
+ props.setProperty('OC_LIQ_READY','5');
 }
 function ocLiqTable_(name){return ocTable_('OC_FINANZAS_ID',name);}
 function ocLiqPeriod_(v){
@@ -53,7 +53,7 @@ function ocLiqData_(){
   liquidaciones:ocLiqTable_('LIQUIDACIONES').rows.filter(ocProd_).map(ocLiqRow_),
   imputaciones:ocLiqTable_('IMPUTACIONES_SUELDO').rows.filter(ocProd_).map(r=>{const x=osClean_(r);x.monto=Number(r.monto)||0;return x;}),
   conceptId:OC_LIQ_CONCEPT.concepto_id,
-  trabajadores:ocLiqTable_('TRABAJADORES').rows.filter(ocProd_).map(r=>{const x=osClean_(r);['fecha_ingreso','fecha_termino'].forEach(k=>{x[k]=osDate_(String(x[k]||''))?String(x[k]):'';});['sueldo_base','dias_vacaciones_anuales','vacaciones_saldo_inicial'].forEach(k=>{x[k]=r[k]===''?'':Number(r[k]);});x.version=Number(r.version||1);return x;}),
+  trabajadores:ocLiqTable_('TRABAJADORES').rows.filter(ocProd_).map(r=>{const x=osClean_(r);['fecha_ingreso','fecha_termino'].forEach(k=>{x[k]=osDate_(String(x[k]||''))?String(x[k]):'';});['sueldo_base','dias_vacaciones_anuales','vacaciones_saldo_inicial','anios_previos'].forEach(k=>{x[k]=r[k]===''||r[k]===undefined?'':Number(r[k]);});x.version=Number(r.version||1);return x;}),
   eventos:ocLiqTable_('RRHH_EVENTOS').rows.filter(ocProd_).map(r=>{const x=osClean_(r);x.desde=osDate_(String(x.desde||''))?String(x.desde):'';x.hasta=osDate_(String(x.hasta||''))?String(x.hasta):'';x.dias=Number(r.dias)||0;x.version=Number(r.version||1);return x;}),
   obligaciones:Object.keys(OC_LIQ_OBLIG).reduce((o,k)=>{o[k]={concept:OC_LIQ_OBLIG[k].concept,comps:OC_LIQ_OBLIG[k].comps,compConcept:OC_LIQ_OBLIG[k].compConcept||{}};return o;},{})
  };
@@ -150,7 +150,7 @@ function ocRrhhSave_(p,actor){
  const patch=Object.assign({trabajador_id:id,persona_liq:persona,nombre:nombre,rut:txt('rut',15),cargo:txt('cargo'),fecha_ingreso:ocRrhhDate_(r.fecha_ingreso,'ingreso',true),fecha_termino:ocRrhhDate_(r.fecha_termino,'término',false),
   tipo_contrato:txt('tipo_contrato',40),jornada:txt('jornada',40),afp:txt('afp',40),salud:txt('salud',40),sueldo_base:ocRrhhNum_(r.sueldo_base,'sueldo base',1e9),
   dias_vacaciones_anuales:ocRrhhNum_(r.dias_vacaciones_anuales===''||r.dias_vacaciones_anuales===undefined?15:r.dias_vacaciones_anuales,'días de vacaciones',60),vacaciones_saldo_inicial:ocRrhhNum_(r.vacaciones_saldo_inicial,'saldo inicial',200),
-  email:txt('email'),telefono:txt('telefono',40),banco:txt('banco',60),cuenta:txt('cuenta',40),notas:txt('notas',1000)},ocLiqStamp_(prior,actor));
+  anios_previos:ocRrhhNum_(r.anios_previos,'años cotizados previos',40),email:txt('email'),telefono:txt('telefono',40),banco:txt('banco',60),cuenta:txt('cuenta',40),notas:txt('notas',1000),documentos:txt('documentos',3000)},ocLiqStamp_(prior,actor));
  ['rut','cuenta','telefono'].forEach(k=>{if(patch[k])patch[k]="'"+patch[k];});
  osAudit_(actor,'RRHH_FICHA','TRABAJADORES',id,{antes:prior?osClean_(prior):null,despues:patch});
  ocPatchRow_(t,prior?prior._row:t.sheet.getLastRow()+1,patch);
