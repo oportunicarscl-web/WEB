@@ -6,7 +6,7 @@ const MES=['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DI
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fin=n=>typeof n==='number'&&Number.isFinite(n);
 // Montos compactos: $12,4M · $850K · $9.000
-const short=n=>{if(!fin(n))return '—';const a=Math.abs(n),s=n<0?'−':'';if(a>=1e6)return s+'$'+(a/1e6).toFixed(a>=1e8?0:1).replace('.',',')+'M';if(a>=1e4)return s+'$'+Math.round(a/1e3)+'K';return s+'$'+Math.round(a).toLocaleString('es-CL');};
+const short=n=>{if(!fin(n))return '—';const a=Math.abs(n),s=n<0?'−':'';if(a>=1e6)return s+'$'+(a>=1e8?Math.round(a/1e6).toLocaleString('es-CL'):(a/1e6).toFixed(1).replace('.',','))+'M';if(a>=1e4)return s+'$'+Math.round(a/1e3)+'K';return s+'$'+Math.round(a).toLocaleString('es-CL');};
 const full=n=>fin(n)?(n<0?'−':'')+'$'+Math.round(Math.abs(n)).toLocaleString('es-CL'):'—';
 const lab=p=>MES[Number(p.slice(5,7))-1]+' '+p.slice(2,4);
 const addMonths=(p,k)=>{let y=Number(p.slice(0,4)),m=Number(p.slice(5,7))+k;while(m>12){m-=12;y++;}while(m<1){m+=12;y--;}return y+'-'+String(m).padStart(2,'0');};
