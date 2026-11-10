@@ -24,16 +24,16 @@ const isPersonal=m=>/retiro de socio|gasto personal/i.test(String(m.categoria||'
 const isAclarar=m=>String(m.concepto_id)===POR_ACLARAR||/por aclarar/i.test(String(m.concepto_nombre||''));
 const CHANNELS=[['CHILEAUTOS','Chileautos',/CHILEAUTOS|CHILE AUTOS/i,null],['FACEBOOK','Facebook / Instagram',/FACEBK|FACEBOOK|META ?ADS|INSTAGRAM/i,null],['CLAXO','Claxo',/CLAXO/i,/claxo/i],['CYC','Cars and Coffee',/CARS ?(AND|&) ?COFFEE|C&C/i,/cars and coffee|c&c/i],['REFERIDO','Referido',null,null],['OTRO','Local / otro',null,null]];
 const DEFAULT_RULES=[
- {pattern:'WHOOSH',concept:'TRANSPORTE',dir:'SALIDA',note:'Traslados Whoosh'},
+ {pattern:'WHOOSH',concept:'TRANSPORTE',dir:'SALIDA',max:50000,note:'Traslados Whoosh'},
  {pattern:'AUTOFACT',concept:'TRAMITES',dir:'SALIDA',note:'Transferencias e informes Autofact'},
  {pattern:'CLAXO',concept:'name:claxo',dir:'SALIDA',note:'Publicación Claxo'},
  {pattern:'FACEBK|FACEBOOK',concept:'MARKETING',dir:'SALIDA',note:'Publicidad Meta'},
  {pattern:'CHILEAUTOS',concept:'MARKETING',dir:'SALIDA',note:'Publicación Chileautos'},
- {pattern:'PARKING|ESTAC|SIMPLEPAR|AP LAS CONDES',concept:'TRANSPORTE',dir:'SALIDA',note:'Estacionamientos'},
- {pattern:'COPEC|ARAMCO|SHELL|PETROBRAS',concept:'TRANSPORTE',dir:'SALIDA',note:'Combustible'},
+ {pattern:'CYFPARKING|MERCADOPAGO ESTAC|SIMPLEPAR|AP LAS CONDES|\\bESTACIONAM',concept:'TRANSPORTE',dir:'SALIDA',max:50000,note:'Estacionamientos (sin Net Parking: es arriendo)'},
+ {pattern:'COPEC|ARAMCO|SHELL|PETROBRAS',concept:'TRANSPORTE',dir:'SALIDA',max:150000,note:'Combustible'},
  {pattern:'MUNICIPALIDAD|MUNI DE',concept:'TRAMITES',dir:'SALIDA',note:'Permisos y trámites municipales'},
  {pattern:'PREVIRED',concept:'IMPOSICIONES',dir:'SALIDA',note:'Imposiciones'},
- {pattern:'TESORERIA|TGR',concept:'IMPUESTOS',dir:'SALIDA',note:'Impuestos (F29)'}
+ {pattern:'TESORERIA|\\bTGR\\b',concept:'IMPUESTOS',dir:'SALIDA',note:'Impuestos (F29)'}
 ];
 
 // ---------- Cálculos puros (probados en tests) ----------
@@ -114,7 +114,7 @@ function consignment(c,op,owner){
 // Reglas: movimientos sin asignar cuyo texto calza el patrón y la dirección.
 function ruleMatches(movements,rule){
  let re;try{re=new RegExp(rule.pattern,'i');}catch(e){return [];}
- return (movements||[]).filter(okMove).filter(m=>!m.concepto_id&&(!rule.dir||m.direccion===rule.dir)&&re.test(text(m)));
+ const max=Number(rule.max)||0;return (movements||[]).filter(okMove).filter(m=>!m.concepto_id&&(!rule.dir||m.direccion===rule.dir)&&(!max||Number(m.monto)<=max)&&re.test(text(m)));
 }
 function resolveConcept(concepts,ref){
  if(!ref)return null;if(String(ref).startsWith('name:')){const re=new RegExp(String(ref).slice(5),'i');return concepts.find(c=>re.test(c.name))||null;}
@@ -146,7 +146,7 @@ function taxCalendar(movements,cars,today){
  const found=(re,conc,from,to)=>ms.filter(m=>m.fecha_operacion>=from&&m.fecha_operacion<=to&&(conc.test(String(m.concepto_nombre||'')+' '+String(m.concepto_id||''))||re.test(text(m))));
  for(let k=-3;k<=3;k++){const per=addMonths(cur,k),nx=addMonths(per,1);
   const iva=(cars||[]).filter(c=>c.sold&&c.modality==='PROPIO'&&isDay(c.saleDate)&&c.saleDate.slice(0,7)===per&&c.result>0).reduce((s,c)=>s+c.result*19/119,0);
-  const f29=found(/TESORER|TGR|F29|SII/i,/impuesto/i,nx+'-01',lastDay(nx)),pr=found(/PREVIRED/i,/imposicion/i,nx+'-01',lastDay(nx));
+  const f29=found(/TESORER|\bTGR\b|\bF29\b/i,/impuesto/i,nx+'-01',lastDay(nx)),pr=found(/PREVIRED/i,/imposicion/i,nx+'-01',lastDay(nx));
   list.push({id:'F29-'+per,name:'F29 · IVA, PPM y retenciones de '+perLabel(per),due:nx+'-20',paid:f29.reduce((s,m)=>s+Number(m.monto),0),moves:f29.length,estimate:iva});
   list.push({id:'PREV-'+per,name:'Previred · imposiciones de '+perLabel(per),due:nx+'-13',paid:pr.reduce((s,m)=>s+Number(m.monto),0),moves:pr.length,estimate:null});
  }
@@ -274,7 +274,7 @@ function viewRules(){
  <h3>Avance por mes</h3><div class="oc-table-scroll"><table class="lq-table rt-table"><thead><tr><th>Mes</th><th>Movimientos</th><th>Sin asignar</th><th>% sin asignar</th><th>Monto sin asignar</th><th>Meta &lt;5%</th></tr></thead><tbody>${prog.map(p=>`<tr><td>${perLabel(p.month)}</td><td>${p.n}</td><td>${p.un}</td><td>${pct(p.pct)}</td><td>${money(p.unAmount)}</td><td>${p.pct<5?badge('ok','Cumple'):badge('bad','Falta')}</td></tr>`).join('')}</tbody></table></div>
  <h3>Reglas ${saved?'':'<small>(sugeridas, aún no guardadas)</small>'}</h3>
  ${R.map(r=>{const c=resolveConcept(C,r.concept),ms=ruleMatches(mv,r),tot=ms.reduce((s,m)=>s+Number(m.monto),0),open=s.ruleOpen===r.id,sel=s.sel[r.id]||{};
-  return `<article class="rt-rule"><div><b>${esc(r.note||r.pattern)}</b> · patrón <code>${esc(r.pattern)}</code> · ${r.dir==='ENTRADA'?'ingresos':r.dir==='SALIDA'?'egresos':'ambos'} → ${c?esc(c.name):'<span class="rt-neg">concepto no encontrado ('+esc(r.concept)+')</span>'}</div>
+  return `<article class="rt-rule"><div><b>${esc(r.note||r.pattern)}</b> · patrón <code>${esc(r.pattern)}</code> · ${r.dir==='ENTRADA'?'ingresos':r.dir==='SALIDA'?'egresos':'ambos'}${r.max?' hasta '+money(Number(r.max)):''} → ${c?esc(c.name):'<span class="rt-neg">concepto no encontrado ('+esc(r.concept)+')</span>'}</div>
   <div>${ms.length?`<button class="lq-link" data-rt-rule="${esc(r.id)}">${ms.length} sin asignar · ${money(tot)}</button>`:'<small>Nada pendiente</small>'} <button class="lq-link" data-rt-redit="${esc(r.id)}">Editar</button> <button class="lq-link" data-rt-rdel="${esc(r.id)}">Quitar</button></div>
   ${open&&ms.length?`<div class="oc-table-scroll"><table class="lq-table"><thead><tr><th><input type="checkbox" data-rt-all="${esc(r.id)}"${ms.every(m=>sel[m.movimiento_id]!==false)?' checked':''}></th><th>Fecha</th><th>Movimiento</th><th>Monto</th></tr></thead><tbody>${ms.map(m=>`<tr><td><input type="checkbox" data-rt-pick="${esc(r.id)}" value="${esc(m.movimiento_id)}"${sel[m.movimiento_id]!==false?' checked':''}></td><td>${fmtDate(m.fecha_operacion)}</td><td>${esc(text(m))}</td><td>${money(Number(m.monto))}</td></tr>`).join('')}</tbody></table></div>
    ${c?`<button data-rt-apply="${esc(r.id)}"${s.busy?' disabled':''}>Asignar ${ms.filter(m=>sel[m.movimiento_id]!==false).length} a «${esc(c.name)}»</button>`:''}`:''}</article>`;}).join('')}
@@ -282,8 +282,8 @@ function viewRules(){
 }
 function ruleDialog(el,id){
  const R=rules(),r=R.find(x=>x.id===id)||{id:'R'+uid().slice(0,8),pattern:'',concept:'',dir:'SALIDA',note:''},C=concepts().filter(c=>!['APORTE_CAPITAL','PRESTAMO'].includes(c.nature)&&!c.vehicleOperation).sort((a,b)=>a.name.localeCompare(b.name)),cur=resolveConcept(concepts(),r.concept),d=document.createElement('dialog');d.className='oc-dialog';
- d.innerHTML=`<form method="dialog"><h2>${R.some(x=>x.id===id)?'Editar':'Nueva'} regla</h2><div class="oc-caja-form"><label>Nombre<input name="note" maxlength="60" value="${esc(r.note)}"></label><label>Patrón (texto o A|B)<input name="pattern" required maxlength="120" value="${esc(r.pattern)}"></label><label>Dirección<select name="dir">${[['SALIDA','Egresos'],['ENTRADA','Ingresos'],['','Ambos']].map(([v,l])=>`<option value="${v}"${r.dir===v?' selected':''}>${l}</option>`).join('')}</select></label><label>Concepto<select name="concept">${C.map(c=>`<option value="${esc(c.id)}"${cur&&cur.id===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}</select></label></div><p><small>Solo conceptos que no van a un auto: ventas, compras y arreglos se asignan en la caja con su patente.</small></p><button value="ok">Guardar</button> <button value="cancel" formnovalidate>Cancelar</button></form>`;
- document.body.append(d);d.showModal();d.addEventListener('close',async()=>{if(d.returnValue==='ok'){const f=new FormData(d.querySelector('form')),next={id:r.id,note:String(f.get('note')||'').trim(),pattern:String(f.get('pattern')||'').trim(),dir:String(f.get('dir')||''),concept:String(f.get('concept')||'')};
+ d.innerHTML=`<form method="dialog"><h2>${R.some(x=>x.id===id)?'Editar':'Nueva'} regla</h2><div class="oc-caja-form"><label>Nombre<input name="note" maxlength="60" value="${esc(r.note)}"></label><label>Patrón (texto o A|B)<input name="pattern" required maxlength="120" value="${esc(r.pattern)}"></label><label>Monto máximo (opcional)<input name="max" type="number" min="0" step="1" value="${esc(r.max||'')}"></label><label>Dirección<select name="dir">${[['SALIDA','Egresos'],['ENTRADA','Ingresos'],['','Ambos']].map(([v,l])=>`<option value="${v}"${r.dir===v?' selected':''}>${l}</option>`).join('')}</select></label><label>Concepto<select name="concept">${C.map(c=>`<option value="${esc(c.id)}"${cur&&cur.id===c.id?' selected':''}>${esc(c.name)}</option>`).join('')}</select></label></div><p><small>Solo conceptos que no van a un auto: ventas, compras y arreglos se asignan en la caja con su patente.</small></p><button value="ok">Guardar</button> <button value="cancel" formnovalidate>Cancelar</button></form>`;
+ document.body.append(d);d.showModal();d.addEventListener('close',async()=>{if(d.returnValue==='ok'){const f=new FormData(d.querySelector('form')),next={id:r.id,note:String(f.get('note')||'').trim(),pattern:String(f.get('pattern')||'').trim(),dir:String(f.get('dir')||''),concept:String(f.get('concept')||''),max:Number(f.get('max'))||0};
   try{new RegExp(next.pattern,'i');const all=R.some(x=>x.id===r.id)?R.map(x=>x.id===r.id?next:x):[...R,next];await saveNeg('rules',all);s.message='Regla guardada.';}catch(e){s.message=e.message;}draw(el);}d.remove();});
 }
 function viewComm(){
