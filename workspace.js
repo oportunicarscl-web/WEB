@@ -38,7 +38,7 @@
   const isJT=(name,email)=>/^(jt|jos[eé]\s*tom[aá]s)\b/i.test(String(name||'').trim())||/^(jt|jtomas|josetomas|jose\.tomas|jt\.)/i.test(String(email||''));
   function node(html) { const t=document.createElement('template');t.innerHTML=html;return t.content; }
   function close() {
-    root.OCCaja?.reset();root.OCCajaNueva?.reset();root.OCAdmin?.reset();root.OCLiquidaciones?.reset();root.OCCorreos?.reset();root.OCConfig?.reset();admin=false;
+    root.OCCaja?.reset();root.OCCajaNueva?.reset();root.OCAdmin?.reset();root.OCLiquidaciones?.reset();root.OCRentabilidad?.reset();root.OCCorreos?.reset();root.OCConfig?.reset();admin=false;
     host?.remove();host=null;session=null;role=null;query='';table='';
     document.body.classList.remove('workspace-open');
     document.title='Oportunicars · Acceso';
@@ -52,6 +52,7 @@
     root.OCCajaNueva?.setup({preview,...options.caja,cashStart:cut,isAdmin:admin});
     if(admin)root.OCAdmin?.setup({...options.caja});
     if(admin)root.OCLiquidaciones?.setup({call:options.system?.call,store:options.system?.store,accountsInfo:options.caja?.accountsInfo,manualAdd:options.caja?.manualAdd,setDirection:options.caja?.setDirection});
+    if(admin)root.OCRentabilidad?.setup({call:options.system?.call,store:options.system?.store,caja:options.caja});
     if(admin)root.OCCorreos?.setup({call:options.system?.call,store:options.system?.store});
     root.OCSistema?.setup({...options.system,canManage:options.profile?.manage,canClaxo:jt});
     root.OCConfig?.setup({store:options.system?.store,call:options.system?.call,canManage:!!options.profile?.manage,saveMovement:options.caja?.saveMovement,saveConcept:options.caja?.saveConcept});
@@ -61,10 +62,10 @@
     render();
   }
   // Por ahora solo Caja y bancos y Autos y operación están activas; el resto se ve en el menú pero no carga ni cambia la vista.
-  const active=['finanzas','historica','operaciones','gerencial','operacional','analitica','administrar','gestion','compromisos','parametros','liquidaciones','correos','negocio'];
+  const active=['finanzas','historica','operaciones','gerencial','operacional','analitica','administrar','gestion','compromisos','parametros','liquidaciones','correos','negocio','rentabilidad'];
   function navigate(next) {
     if(!active.includes(next))return;
-    if(next==='administrar'||next==='liquidaciones'||next==='correos'){if(!admin)return;}
+    if(next==='administrar'||next==='liquidaciones'||next==='correos'||next==='rentabilidad'){if(!admin)return;}
     else if(next==='negocio'){if(!jt)return;}
     else if (!['operacional','gerencial','pendiente','negocio'].includes(next)&&!canAccess(role,next)) return;
     if(next==='gerencial'&&!['gerencial','administrador','finanzas'].includes(role))return;
@@ -73,13 +74,13 @@
   }
   function render() {
     const name=session.profile?.name || session.user.app_metadata?.oc_username || session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuario';
-    const title=view==='gerencial'?'Resumen gerencial':view==='operacional'?'Resumen operacional':view==='pendiente'?'Acceso pendiente':view==='negocio'?'Negocio':view==='administrar'?'Administrar':view==='liquidaciones'?'Liquidaciones y pagos fijos':view==='correos'?'Correos':areas.find(a=>a.id===view)?.name;
+    const title=view==='gerencial'?'Resumen gerencial':view==='operacional'?'Resumen operacional':view==='pendiente'?'Acceso pendiente':view==='negocio'?'Negocio':view==='administrar'?'Administrar':view==='liquidaciones'?'Liquidaciones y pagos fijos':view==='rentabilidad'?'Rentabilidad y control':view==='correos'?'Correos':areas.find(a=>a.id===view)?.name;
     document.title=title+' · Oportunicars';
     host.replaceChildren(node(`
       <aside class="oc-sidebar"><a class="oc-brand" href="#" aria-label="Inicio Oportunicars"><b>oportuni<span>cars</span></b><small>GESTIÓN DEL NEGOCIO</small></a>
       <div class="oc-profile"><span class="oc-avatar">${esc(String(name).slice(0,2).toUpperCase())}</span><div><strong>${esc(name)}</strong><small>${role?roles[role].label:'Perfil por asignar'}</small></div></div>
       <nav aria-label="Áreas">${role?'<p class="oc-nav-label">TU ESPACIO</p>'+nav(['gerencial','administrador','finanzas'].includes(role)?'gerencial':'operacional','Resumen')+(jt&&!['gerencial','administrador','finanzas'].includes(role)?nav('negocio','Negocio'):'')+(['gerencial','administrador'].includes(role)?nav('operacional','Seguimiento operacional'):'')+
-      '<p class="oc-nav-label">ÁREAS DE TRABAJO</p>'+areas.filter(a=>canAccess(role,a.id)).map(a=>nav(a.id,a.name)).join('')+(admin?nav('liquidaciones','Liquidaciones y pagos fijos')+nav('correos','Correos')+nav('administrar','Administrar'):''):''}</nav>
+      '<p class="oc-nav-label">ÁREAS DE TRABAJO</p>'+areas.filter(a=>canAccess(role,a.id)).map(a=>nav(a.id,a.name)).join('')+(admin?nav('rentabilidad','Rentabilidad y control')+nav('liquidaciones','Liquidaciones y pagos fijos')+nav('correos','Correos')+nav('administrar','Administrar'):''):''}</nav>
       <div class="oc-sidebar-bottom"><small>${preview?'VISTA PREVIA · SIN SESIÓN REAL':'Oportunicars · Sistema de Gestión'}</small><button id="oc-signout">Cerrar sesión</button></div></aside>
       <main class="oc-main"><header class="oc-header"><div><p class="oc-eyebrow">OPORTUNICARS / ${role?roles[role].label.toUpperCase():'ACCESO'}</p><h1 tabindex="-1">${title}</h1></div><span class="oc-status">${session.caja?.connected?'Google conectado':'Conexión de datos pendiente'}</span></header>
       ${preview?'<div class="oc-preview">Vista previa de diseño. Perfil de prueba; sin acceso a cuentas ni datos reales.</div>':''}
@@ -93,7 +94,7 @@
     const search=host.querySelector('#oc-search');
     if(search)search.oninput=()=>{query=search.value;renderTables();};
     host.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>showFields(b.dataset.detail));
-    root.OCCaja?.mount(host);root.OCCajaNueva?.mount(host);root.OCAdmin?.mount(host);root.OCLiquidaciones?.mount(host);root.OCCorreos?.mount(host);root.OCConfig?.mount(host);
+    root.OCCaja?.mount(host);root.OCCajaNueva?.mount(host);root.OCAdmin?.mount(host);root.OCLiquidaciones?.mount(host);root.OCRentabilidad?.mount(host);root.OCCorreos?.mount(host);root.OCConfig?.mount(host);
     root.OCSistema?.mount(host);
 
   }
@@ -103,6 +104,7 @@
   function moduleView(){
     if(view==='administrar')return admin&&root.OCAdmin?root.OCAdmin.markup():pending();
     if(view==='liquidaciones')return admin&&root.OCLiquidaciones?root.OCLiquidaciones.markup():pending();
+    if(view==='rentabilidad')return admin&&root.OCRentabilidad?root.OCRentabilidad.markup():pending();
     if(view==='correos')return admin&&root.OCCorreos?root.OCCorreos.markup():pending();
     if(!canAccess(role,view))return pending();
     if(view==='finanzas'&&root.OCCajaNueva)return root.OCCajaNueva.markup('nueva');

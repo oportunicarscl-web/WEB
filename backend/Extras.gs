@@ -3,16 +3,25 @@
 
 // ---------- Parámetros ----------
 // Autos con más de N días de inventario suman costo de estacionamiento: (días − N) × valor por día.
+// Negocio y rentabilidad: reglas, comisiones, canales, cierres, dueños, precios y supuestos (JSON por clave, ≤8.500 caracteres).
+const OC_NEG_KEYS=['rules','commissions','channels','closed','owners','prices','plan','taxes'];
+function ocNegocio_(){const p=PropertiesService.getScriptProperties(),o={};OC_NEG_KEYS.forEach(k=>{const v=p.getProperty('OC_NEG_'+k.toUpperCase());try{o[k]=v?JSON.parse(v):null;}catch(e){o[k]=null;}});return o;}
 function ocSettings_(){
  const p=PropertiesService.getScriptProperties(),n=(k,d)=>{const v=Number(p.getProperty(k));return Number.isFinite(v)&&p.getProperty(k)!==null?v:d;};
- return {parkingDays:n('OC_PARKING_DAYS',30),parkingRate:n('OC_PARKING_RATE',1)};
+ return {parkingDays:n('OC_PARKING_DAYS',30),parkingRate:n('OC_PARKING_RATE',1),negocio:ocNegocio_()};
 }
 function ocSaveSettings_(p,actor){
  if(!actor.manage)throw Error('Solo Gerencia o Administración cambia parámetros.');
+ if(p.negocioKey!==undefined){
+  const k=String(p.negocioKey);if(OC_NEG_KEYS.indexOf(k)<0)throw Error('Parámetro de negocio desconocido.');
+  const txt=JSON.stringify(p.negocioValue===undefined?null:p.negocioValue);if(txt.length>8500)throw Error('Demasiados datos para guardar en «'+k+'».');
+  PropertiesService.getScriptProperties().setProperty('OC_NEG_'+k.toUpperCase(),txt);osAudit_(actor,'PARAMETROS','PROPIEDADES','NEGOCIO_'+k.toUpperCase(),{largo:txt.length});
+  return ocSettings_();
+ }
  const days=Number(p.parkingDays),rate=Number(p.parkingRate);
  if(!Number.isSafeInteger(days)||days<0||days>3650)throw Error('Días libres inválidos.');
  if(!Number.isSafeInteger(rate)||rate<0||rate>10000000)throw Error('Valor por día inválido.');
- const before=ocSettings_();PropertiesService.getScriptProperties().setProperties({OC_PARKING_DAYS:String(days),OC_PARKING_RATE:String(rate)});
+ const b0=ocSettings_(),before={parkingDays:b0.parkingDays,parkingRate:b0.parkingRate};PropertiesService.getScriptProperties().setProperties({OC_PARKING_DAYS:String(days),OC_PARKING_RATE:String(rate)});
  osAudit_(actor,'PARAMETROS','PROPIEDADES','ESTACIONAMIENTO',{antes:before,despues:{parkingDays:days,parkingRate:rate}});
  return ocSettings_();
 }
