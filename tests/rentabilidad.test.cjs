@@ -30,6 +30,10 @@ assert.deepStrictEqual(R.recordPrices({},[{id:'2',listPrice:9900000}],'2026-11-0
 const cc={...car,modality:'CONSIGNADO',lines:[{op:'VENTA',dir:'ENTRADA',amount:10000000},{op:'COMPRA',dir:'SALIDA',amount:5000000}]};
 let k=R.consignment(cc,{comision_consignacion:5},{});assert.strictEqual(k.comision,500000);assert.strictEqual(k.saldo,9500000);assert.strictEqual(k.pendiente,4500000);
 k=R.consignment(cc,{comision_consignacion:''},{});assert.strictEqual(k.comision,null);assert.strictEqual(k.comisionImplicita,5000000);
+// Pago directo al dueño: a la caja entró solo la comisión, sin deuda.
+const dc={...cc,lines:[{op:'VENTA',dir:'ENTRADA',amount:600000}]};k=R.consignment(dc,{precio_venta:12000000,comision_consignacion:5},{});assert.strictEqual(k.pendiente,0);assert.strictEqual(k.comision,600000);
+assert.strictEqual(R.carResult(dc,{precio_venta:12000000,comision_consignacion:5}).estado,'CUADRADO');
+assert.strictEqual(R.consignment({...cc,lines:[]},{precio_venta:12000000},{}).pendiente,null);
 // Reglas: solo sin asignar y en la dirección pedida.
 const rm=R.ruleMatches([mv('x','2026-10-01','SALIDA',5000,{descripcion:'eCOMMERCE MERPAGO WHOOSHCLS'}),mv('y','2026-10-01','SALIDA',5000,{descripcion:'WHOOSH',concepto_id:'T'}),mv('z','2026-10-01','ENTRADA',5000,{descripcion:'WHOOSH'})],{pattern:'WHOOSH',dir:'SALIDA'});
 assert.deepStrictEqual(rm.map(m=>m.movimiento_id),['x']);

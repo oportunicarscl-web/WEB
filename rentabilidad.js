@@ -43,8 +43,13 @@ function carCash(c){
  return {cobrado:sum(l=>l.op==='VENTA'&&l.dir==='ENTRADA'),pagado:sum(l=>l.op==='COMPRA'&&l.dir==='SALIDA'),gastos:sum(l=>l.op!=='COMPRA'&&l.op!=='VENTA'&&l.dir==='SALIDA'),devoluciones:sum(l=>l.op!=='VENTA'&&l.dir==='ENTRADA')};
 }
 // Resultado real por auto: caja cobrada − pagada − gastos, comparado con la ficha (planilla). Tolerancia $1.000.
+// Consignado con pago directo: el comprador le pagó al dueño y a la caja solo entró la comisión (sin pago al dueño).
+const directo=(c,k,fv)=>c.modality==='CONSIGNADO'&&k.pagado===0&&k.cobrado>0&&fv!==null&&k.cobrado<fv*.5;
+const comisionFicha=(op,sale)=>{const raw=num(op&&op.comision_consignacion);return raw===null?null:raw>0&&raw<=100?Math.round(sale*raw/100):raw;};
 function carResult(c,op,closed){
  const k=carCash(c),fv=num(op&&op.precio_venta),fc=num(op&&op.costo_compra),tol=1000,res=k.cobrado-k.pagado-k.gastos+k.devoluciones-(c.parking||0);
+ if(directo(c,k,fv)){const cf=comisionFicha(op,fv),d=cf!==null&&Math.abs(cf-k.cobrado)>tol?['Comisión ficha '+money(cf)+' ≠ cobrada '+money(k.cobrado)]:[];
+  return {...k,fichaVenta:fv,fichaCompra:fc,resultado:res,margen:fv?res/fv*100:null,diffs:d,directo:true,estado:closed?'CERRADO':d.length?'DIFIERE':c.unconfirmed?'POR_CONFIRMAR':'CUADRADO'};}
  const diffs=[];if(fv!==null&&k.cobrado>0&&Math.abs(fv-k.cobrado)>tol)diffs.push('Venta ficha '+money(fv)+' ≠ cobrado '+money(k.cobrado));
  if(fc!==null&&k.pagado>0&&Math.abs(fc-k.pagado)>tol)diffs.push('Compra ficha '+money(fc)+' ≠ pagado '+money(k.pagado));
  let estado='CUADRADO';if(!k.cobrado)estado='FALTA_COBRO';else if(!k.pagado)estado='FALTA_PAGO';else if(diffs.length)estado='DIFIERE';else if(c.unconfirmed)estado='POR_CONFIRMAR';
@@ -95,11 +100,15 @@ function recordPrices(prices,cars,today){
  return changed?out:null;
 }
 // Liquidación al consignador: venta − comisión − gastos descontables = saldo del dueño; menos lo ya pagado = pendiente.
+// Si el comprador pagó directo al dueño, no hay deuda: la caja solo recibió la comisión. Si la venta no entró a la caja, no se calcula deuda.
 function consignment(c,op,owner){
- const k=carCash(c),sale=k.cobrado||num(op&&op.precio_venta)||0,raw=num(op&&op.comision_consignacion);
- const pactada=raw===null?null:raw>0&&raw<=100?Math.round(sale*raw/100):raw,desc=owner&&owner.desc?k.gastos:0;
+ const k=carCash(c),fv=num(op&&op.precio_venta),dir=directo({...c,modality:'CONSIGNADO'},k,fv),sale=dir?fv:(k.cobrado||fv||0),pactada=comisionFicha(op,sale),desc=owner&&owner.desc?k.gastos:0;
+ const payments=(c.lines||[]).filter(l=>l.op==='COMPRA'&&l.dir==='SALIDA'),base={sale,cobrado:k.cobrado,pagado:k.pagado,gastos:k.gastos,desc,payments,directo:dir};
+ if(dir)return {...base,comision:k.cobrado,comisionImplicita:null,saldo:0,pendiente:0,nota:'El comprador pagó directo al dueño; a la caja entró la comisión.'};
+ if(!c.sold)return {...base,comision:pactada,comisionImplicita:null,saldo:null,pendiente:null,nota:'En venta.'};
+ if(!k.cobrado)return {...base,comision:pactada,comisionImplicita:null,saldo:null,pendiente:null,nota:'La venta no entró a las cuentas: sin deuda calculable.'};
  const saldo=pactada===null?null:sale-pactada-desc;
- return {sale,cobrado:k.cobrado,pagado:k.pagado,gastos:k.gastos,desc,comision:pactada,comisionImplicita:pactada===null&&c.sold?sale-k.pagado-desc:null,saldo,pendiente:saldo===null?null:saldo-k.pagado,payments:(c.lines||[]).filter(l=>l.op==='COMPRA'&&l.dir==='SALIDA')};
+ return {...base,comision:pactada,comisionImplicita:pactada===null?sale-k.pagado-desc:null,saldo,pendiente:saldo===null?null:saldo-k.pagado,nota:''};
 }
 // Reglas: movimientos sin asignar cuyo texto calza el patrón y la dirección.
 function ruleMatches(movements,rule){
@@ -196,12 +205,12 @@ const ESTADOS={CUADRADO:['ok','Cuadrado'],CERRADO:['done','Cerrado'],FALTA_COBRO
 function viewCars(){
  const closed=neg().closed||{},q=s.filter.toLowerCase();
  const rows=(st().report.cars||[]).filter(c=>c.sold).map(c=>({c,r:carResult(c,opOf(c.id),closed[c.id])})).filter(x=>!q||x.c.label.toLowerCase().includes(q)||x.r.estado.toLowerCase().includes(q)).sort((a,b)=>String(b.c.saleDate).localeCompare(String(a.c.saleDate)));
- const cnt=k=>rows.filter(x=>x.r.estado===k).length,tot=rows.reduce((s,x)=>s+x.r.resultado,0);
+ const cnt=k=>rows.filter(x=>x.r.estado===k).length,tot=rows.filter(x=>['CUADRADO','CERRADO','DIFIERE','POR_CONFIRMAR'].includes(x.r.estado)).reduce((s,x)=>s+x.r.resultado,0);
  return `<p>Por auto vendido: lo <b>cobrado</b> (ventas asignadas), lo <b>pagado</b> (compra o pago al dueño) y los <b>gastos</b> asignados, contra la ficha (planilla). Un auto cuadrado se puede cerrar.</p>
- <section class="oc-metrics oc-six rt-kpi"><article><p>Vendidos</p><strong>${rows.length}</strong></article><article><p>Cuadrados</p><strong>${cnt('CUADRADO')}</strong></article><article><p>Cerrados</p><strong>${cnt('CERRADO')}</strong></article><article><p>Falta cobro / pago</p><strong>${cnt('FALTA_COBRO')+cnt('FALTA_PAGO')}</strong></article><article><p>Difieren de la ficha</p><strong>${cnt('DIFIERE')}</strong></article><article><p>Resultado caja</p><strong>${money(tot)}</strong></article></section>
+ <section class="oc-metrics oc-six rt-kpi"><article><p>Vendidos</p><strong>${rows.length}</strong></article><article><p>Cuadrados</p><strong>${cnt('CUADRADO')}</strong></article><article><p>Cerrados</p><strong>${cnt('CERRADO')}</strong></article><article><p>Falta cobro / pago</p><strong>${cnt('FALTA_COBRO')+cnt('FALTA_PAGO')}</strong></article><article><p>Difieren de la ficha</p><strong>${cnt('DIFIERE')}</strong></article><article><p>Resultado caja</p><strong>${money(tot)}</strong><small>solo autos con cobro y pago en caja</small></article></section>
  <label class="rt-search">Buscar <input data-rt-filter value="${esc(s.filter)}" placeholder="Patente, modelo o estado"></label>
  <div class="oc-table-scroll"><table class="lq-table rt-table"><thead><tr><th>Auto</th><th>Modalidad</th><th>Venta</th><th>Cobrado</th><th>Pagado</th><th>Gastos</th><th>Resultado</th><th>Margen</th><th>Estado</th><th></th></tr></thead><tbody>
- ${rows.map(({c,r})=>`<tr><td><button class="lq-link" data-rt-open="${esc(c.id)}">${esc(c.label)}</button></td><td>${esc(c.modality)}</td><td>${fmtDate(c.saleDate)}</td><td>${money(r.cobrado)}${r.fichaVenta!==null?`<br><small>ficha ${money(r.fichaVenta)}</small>`:''}</td><td>${money(r.pagado)}${r.fichaCompra!==null?`<br><small>ficha ${money(r.fichaCompra)}</small>`:''}</td><td>${money(r.gastos)}${c.parking?`<br><small>+ estac. ${money(c.parking)}</small>`:''}</td><td><b>${money(r.resultado)}</b></td><td>${pct(r.margen)}</td><td>${badge(...ESTADOS[r.estado])}${r.diffs.length?`<br><small>${esc(r.diffs.join(' · '))}</small>`:''}</td>
+ ${rows.map(({c,r})=>`<tr><td><button class="lq-link" data-rt-open="${esc(c.id)}">${esc(c.label)}</button></td><td>${esc(c.modality)}</td><td>${fmtDate(c.saleDate)}</td><td>${money(r.cobrado)}${r.fichaVenta!==null?`<br><small>ficha ${money(r.fichaVenta)}</small>`:''}</td><td>${money(r.pagado)}${r.fichaCompra!==null?`<br><small>ficha ${money(r.fichaCompra)}</small>`:''}</td><td>${money(r.gastos)}${c.parking?`<br><small>+ estac. ${money(c.parking)}</small>`:''}</td><td><b>${money(r.resultado)}</b></td><td>${pct(r.margen)}</td><td>${badge(...ESTADOS[r.estado])}${r.directo?'<br><small>dueño cobró directo</small>':''}${r.diffs.length?`<br><small>${esc(r.diffs.join(' · '))}</small>`:''}</td>
   <td>${r.estado==='CUADRADO'?`<button data-rt-close="${esc(c.id)}">Cerrar</button>`:r.estado==='CERRADO'?`<button class="lq-link" data-rt-reopen="${esc(c.id)}">Reabrir</button>`:''}</td></tr>
   ${s.open[c.id]?`<tr class="rt-detail"><td colspan="10">${linesTable(c.lines)}</td></tr>`:''}`).join('')}
  </tbody></table></div>`;
@@ -238,7 +247,7 @@ function viewConsign(){
  return `<p>Por auto consignado: venta − comisión pactada (ficha: % si es ≤ 100, monto si es mayor) − gastos descontables al dueño = saldo del dueño; menos lo pagado (compra asignada al auto) = pendiente. Imprime la liquidación para el dueño.</p>
  <section class="oc-metrics oc-six rt-kpi"><article><p>Consignados</p><strong>${rows.length}</strong><small>${sold.length} vendidos</small></article><article><p>Deuda con dueños</p><strong>${money(due)}</strong><small>${sold.filter(x=>x.k.pendiente>0).length} autos con saldo pendiente</small></article><article><p>Sin comisión en ficha</p><strong>${sold.filter(x=>x.k.comision===null).length}</strong><small>se muestra la implícita</small></article></section>
  <div class="oc-table-scroll"><table class="lq-table rt-table"><thead><tr><th>Auto</th><th>Dueño</th><th>Venta</th><th>Comisión</th><th>Gastos al dueño</th><th>Saldo dueño</th><th>Pagado</th><th>Pendiente</th><th></th></tr></thead><tbody>
- ${rows.map(({c,k})=>{const o=owners[c.id]||{};return `<tr><td>${esc(c.label)}<br><small>${c.sold?'Vendido '+fmtDate(c.saleDate):esc(c.status)}</small></td><td>${esc(o.name||'—')}</td><td>${money(k.sale)}</td><td>${k.comision!==null?money(k.comision):k.comisionImplicita!==null?money(k.comisionImplicita)+' <small>implícita</small>':'—'}</td><td>${o.desc?money(k.gastos):'<small>no se descuentan ('+money(k.gastos)+')</small>'}</td><td>${money(k.saldo)}</td><td>${money(k.pagado)}</td><td class="${k.pendiente>0?'rt-neg':''}">${k.pendiente===null?'—':money(k.pendiente)}</td><td><button class="lq-link" data-rt-owner="${esc(c.id)}">Dueño</button> · <button class="lq-link" data-rt-print="${esc(c.id)}">Liquidación</button></td></tr>`;}).join('')}
+ ${rows.map(({c,k})=>{const o=owners[c.id]||{};return `<tr><td>${esc(c.label)}<br><small>${c.sold?'Vendido '+fmtDate(c.saleDate):esc(c.status)}</small></td><td>${esc(o.name||'—')}</td><td>${money(k.sale)}</td><td>${k.comision!==null?money(k.comision):k.comisionImplicita!==null?money(k.comisionImplicita)+' <small>implícita</small>':'—'}</td><td>${o.desc?money(k.gastos):'<small>no se descuentan ('+money(k.gastos)+')</small>'}</td><td>${money(k.saldo)}</td><td>${money(k.pagado)}</td><td class="${k.pendiente>0?'rt-neg':''}">${k.pendiente===null?'—':money(k.pendiente)}${k.nota?`<br><small>${esc(k.nota)}</small>`:''}</td><td><button class="lq-link" data-rt-owner="${esc(c.id)}">Dueño</button> · <button class="lq-link" data-rt-print="${esc(c.id)}">Liquidación</button></td></tr>`;}).join('')}
  </tbody></table></div><p><small>Para registrar un pago al dueño, asígnalo en la caja como «Compra de auto» con este auto: aparece aquí como pagado.</small></p>`;
 }
 function ownerDialog(el,id){
