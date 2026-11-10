@@ -24,7 +24,7 @@ const isPersonal=m=>/retiro de socio|gasto personal/i.test(String(m.categoria||'
 const isAclarar=m=>String(m.concepto_id)===POR_ACLARAR||/por aclarar/i.test(String(m.concepto_nombre||''));
 const CHANNELS=[['CHILEAUTOS','Chileautos',/CHILEAUTOS|CHILE AUTOS/i,null],['FACEBOOK','Facebook / Instagram',/FACEBK|FACEBOOK|META ?ADS|INSTAGRAM/i,null],['CLAXO','Claxo',/CLAXO/i,/claxo/i],['CYC','Cars and Coffee',/CARS ?(AND|&) ?COFFEE|C&C/i,/cars and coffee|c&c/i],['REFERIDO','Referido',null,null],['OTRO','Local / otro',null,null]];
 const DEFAULT_RULES=[
- {pattern:'WHOOSH',concept:'TRANSPORTE',dir:'SALIDA',max:50000,note:'Traslados Whoosh'},
+ {pattern:'WHOOSH|LIME',concept:'TRANSPORTE',dir:'SALIDA',max:50000,note:'Scooters (Whoosh, Lime)'},
  {pattern:'AUTOFACT',concept:'TRAMITES',dir:'SALIDA',note:'Transferencias e informes Autofact'},
  {pattern:'CLAXO',concept:'name:claxo',dir:'SALIDA',note:'Publicación Claxo'},
  {pattern:'FACEBK|FACEBOOK',concept:'MARKETING',dir:'SALIDA',note:'Publicidad Meta'},
