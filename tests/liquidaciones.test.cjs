@@ -47,3 +47,30 @@ console.log('liquidaciones ok');
  assert.deepEqual([w.periodos.length,w.periodos[0].tomado,w.periodos[1].completo,w.progresivo],[2,5,false,0]);
  console.log('rrhh2 ok');
 }
+{
+ const L=require('../liquidaciones.js'),assert=require('assert');
+ // JT: ingreso 01-11-2025, al 10-11-2026 cumplió el 1.er año (15 con derecho) + 9 días del 2.º período (9/30 × 1,25 = 0,38).
+ const jt={trabajador_id:'TRB-JT',fecha_ingreso:'2025-11-01',dias_vacaciones_anuales:15,sueldo_base:3000000,persona_liq:'JT',dias_administrativos_anuales:3};
+ let v=L.vacation(jt,[],'2026-11-10');
+ assert.deepEqual([v.conDerecho,v.proporcional,v.saldo,v.periodos.length,v.proximoAniversario],[15,0.38,15.38,2,'2026-11-01'.replace('2026','2027')]);
+ // FIFO: 12 días tomados en dic-2026 salen del 1.er período aunque caen en el 2.º.
+ v=L.vacation(jt,[{trabajador_id:'TRB-JT',tipo:'VACACIONES',desde:'2026-12-01',dias:12}],'2026-12-20');
+ assert.deepEqual([v.periodos[0].tomado,v.periodos[0].saldo,v.periodos[1].tomado,v.periodos[0].bloque10],[12,3,0,true]);
+ // Dos períodos completos sin tomar: alerta de acumulación y fecha límite.
+ v=L.vacation(jt,[],'2027-12-01');assert.ok(v.acumulaExceso);assert.equal(v.vence,'2028-11-01');
+ // Progresivo: sin años previos recién a los 13 años con este empleador; con 10 previos, a los 3 años.
+ assert.equal(L.progresivoEn(0,12),0);assert.equal(L.progresivoEn(0,13),1);assert.equal(L.progresivoEn(10,3),1);assert.equal(L.progresivoEn(25,6),2);
+ // Días corridos para pagar feriado: 15 hábiles desde viernes 06-11-2026 → hasta el 27-11 = 21 corridos.
+ assert.equal(L.toCalendarDays('2026-11-06',15),21);
+ // Remuneración íntegra: base + promedio de los últimos 3 variables.
+ const fv=L.feriadoValue(jt,[{persona:'JT',componente:'VARIABLE',periodo:'2026-08',monto:2000820},{persona:'JT',componente:'VARIABLE',periodo:'2026-09',monto:3000000},{persona:'JT',componente:'VARIABLE',periodo:'2026-10',monto:3000000},{persona:'JT',componente:'VARIABLE',periodo:'2026-06',monto:9}],15,'2026-11-06');
+ assert.deepEqual([fv.variable,fv.corridos,fv.diario],[2666940,21,188898]);
+ // Administrativos: cupo 3, se renuevan en el aniversario; los del año anterior no cuentan.
+ const ev=[{trabajador_id:'TRB-JT',tipo:'ADMINISTRATIVO',desde:'2026-10-15',dias:1},{trabajador_id:'TRB-JT',tipo:'ADMINISTRATIVO',desde:'2026-11-05',dias:0.5}];
+ assert.deepEqual(L.adminDays(jt,ev,'2026-11-10'),{cupo:3,usado:0.5,disponible:2.5,desde:'2026-11-01',hasta:'2027-11-01',calendario:false});
+ assert.equal(L.adminDays({...jt,admin_renovacion:'CALENDARIO'},ev,'2026-11-10').usado,1.5);
+ // Permisos legales: matrimonio 5 hábiles saltando fin de semana; duelo hijo 10 corridos.
+ assert.deepEqual(L.permitRange('MATRIMONIO','2026-11-12'),{hasta:'2026-11-18',dias:5});
+ assert.deepEqual(L.permitRange('DUELO_HIJO','2026-11-12'),{hasta:'2026-11-21',dias:10});
+ console.log('rrhh3 ok');
+}
