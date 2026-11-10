@@ -31,7 +31,8 @@ async function socios(force){
 function markup(){return '<div id="oc-config-extra"></div>';}
 function mount(parent){const el=parent.querySelector('#oc-config-extra');if(!el||!s)return;draw(el);if(!cache)socios().then(()=>draw(el),e=>{s.message=e.message;draw(el);});}
 const concepts=()=>root.OCCajaNueva?.snapshot()?.concepts||[];
-const aportes=()=>(root.OCCajaNueva?.snapshot()?.movements||[]).filter(m=>m.classification?.nature==='APORTE_CAPITAL');
+// Mismo criterio que el Resumen (system-core): aportes de capital que son ingreso, con monto, en la caja.
+const aportes=()=>(root.OCCajaNueva?.snapshot()?.movements||[]).filter(m=>m.classification?.nature==='APORTE_CAPITAL'&&m.direction==='ENTRADA'&&Number.isFinite(m.amount));
 const NAT={GASTO:'Gasto',COSTO:'Costo',INGRESO:'Ingreso',TRANSFERENCIA:'Transferencia',APORTE_CAPITAL:'Aporte de capital',PRESTAMO:'Préstamo'};
 function draw(el){
  const list=cache||[],names=new Set(list.map(x=>norm(x.nombre))),ap=aportes(),bad=ap.filter(m=>!names.has(norm(m.socio)));
