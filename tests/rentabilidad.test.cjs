@@ -49,3 +49,6 @@ assert.strictEqual(tx.find(t=>t.id==='PREV-2026-09').status,'VENCIDO');
 const w=R.cashPlan(1000000,{carsPerWeek:1,marginPerCar:500000,opexMonth:5200000},[{fecha:'2026-11-12',direccion:'ENTRADA',pending:200000}],300000,'2026-11-05');
 assert.strictEqual(w.length,13);assert.strictEqual(w[0].from,'2026-11-02');assert.strictEqual(w[0].close,1000000+500000-1200000-300000);assert.strictEqual(w[1].forecastIn,200000);
 console.log('rentabilidad ok');
+// Inversiones en otros negocios: fuera del resultado operacional.
+{const r2=R.monthly([{movimiento_id:'i',fecha_operacion:'2026-08-30',direccion:'SALIDA',monto:600000,estado_registro:'ACTIVO',concepto_id:'INVERSIONES_OTROS',concepto_nombre:'Inversiones otros negocios',naturaleza:'GASTO',tipo_costo:'NO_APLICA'}],[],'2026-09-01')[0];
+require('assert').strictEqual(r2.inversion,600000);require('assert').strictEqual(r2.result,0);console.log('inversiones ok');}

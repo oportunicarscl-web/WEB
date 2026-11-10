@@ -21,6 +21,7 @@ const dayDiff=(a,b)=>Math.round((Date.parse(b+'T12:00:00Z')-Date.parse(a+'T12:00
 const text=m=>[m.descripcion,m.referencia,m.contraparte].filter(Boolean).join(' ');
 const okMove=m=>m.estado_registro!=='ANULADO'&&(!m.ambiente||m.ambiente==='PRODUCCION')&&!/^(rejected|cancelled|refunded|charged_back)$/i.test(String(m.estado_fuente||''))&&num(m.monto)!==null&&Number(m.monto)>0&&isDay(m.fecha_operacion)&&['ENTRADA','SALIDA'].includes(m.direccion);
 const isPersonal=m=>/retiro de socio|gasto personal/i.test(String(m.categoria||'')+' '+String(m.concepto_nombre||''));
+const isInversion=m=>String(m.concepto_id)==='INVERSIONES_OTROS'||/inversi[oó]n no operacional|inversiones otros negocios/i.test(String(m.categoria||'')+' '+String(m.concepto_nombre||''));
 const isAclarar=m=>String(m.concepto_id)===POR_ACLARAR||/por aclarar/i.test(String(m.concepto_nombre||''));
 const CHANNELS=[['CHILEAUTOS','Chileautos',/CHILEAUTOS|CHILE AUTOS/i,null],['FACEBOOK','Facebook / Instagram',/FACEBK|FACEBOOK|META ?ADS|INSTAGRAM/i,null],['CLAXO','Claxo',/CLAXO/i,/claxo/i],['CYC','Cars and Coffee',/CARS ?(AND|&) ?COFFEE|C&C/i,/cars and coffee|c&c/i],['REFERIDO','Referido',null,null],['OTRO','Local / otro',null,null]];
 const DEFAULT_RULES=[
@@ -59,12 +60,13 @@ function carResult(c,op,closed){
 // Resultado mensual: margen de los autos vendidos en el mes (devengado por auto) + otros ingresos − gastos de operación.
 // Fuera del resultado: compras y ventas de autos (ya están en el margen), transferencias, aportes, préstamos, gastos personales y «Por aclarar».
 function monthly(movements,cars,today){
- const by={},get=k=>by[k]||(by[k]={month:k,sold:0,margin:0,sales:0,marginMissing:0,otherIn:0,fixed:0,variable:0,personal:0,aclarar:0,unassigned:0,unassignedN:0,expenses:{}});
+ const by={},get=k=>by[k]||(by[k]={month:k,sold:0,margin:0,sales:0,marginMissing:0,otherIn:0,fixed:0,variable:0,personal:0,inversion:0,aclarar:0,unassigned:0,unassignedN:0,expenses:{}});
  (cars||[]).filter(c=>c.sold&&isDay(c.saleDate)&&c.saleDate<=today).forEach(c=>{const e=get(c.saleDate.slice(0,7));e.sold++;if(c.result!==null&&c.result!==undefined){e.margin+=c.result;e.sales+=c.sale||0;}else e.marginMissing++;});
  (movements||[]).filter(okMove).filter(m=>m.fecha_operacion<=today).forEach(m=>{
   const e=get(m.fecha_operacion.slice(0,7)),a=Number(m.monto),nat=String(m.naturaleza||'');
   if(!m.concepto_id){e.unassigned+=a;e.unassignedN++;return;}
   if(isPersonal(m)){if(m.direccion==='SALIDA')e.personal+=a;else e.personal-=a;return;}
+  if(isInversion(m)){e.inversion+=(m.direccion==='SALIDA'?1:-1)*a;return;}
   if(isAclarar(m)){e.aclarar+=(m.direccion==='SALIDA'?1:-1)*a;return;}
   if(['TRANSFERENCIA','APORTE_CAPITAL','PRESTAMO'].includes(nat)&&m.componente_prestamo!=='INTERES')return;
   if(m.vehiculo_id||['COMPRA','VENTA'].includes(m.operacion_auto))return;
@@ -219,11 +221,11 @@ function viewCars(){
 const linesTable=L=>L&&L.length?`<table class="lq-table"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Concepto</th><th>Tipo</th><th>Monto</th></tr></thead><tbody>${L.map(l=>`<tr><td>${fmtDate(l.date)}</td><td>${esc(l.text)}</td><td>${esc(l.concept)}</td><td>${esc(l.op||'—')}</td><td>${l.dir==='ENTRADA'?'+':'−'}${money(l.amount)}${l.confirmed?'':' <small>por confirmar</small>'}</td></tr>`).join('')}</tbody></table>`:'<p class="lq-empty">Sin movimientos asignados.</p>';
 function viewMonth(){
  const R=st().report,rows=monthly(st().movements,R.cars,T()),be=breakeven(rows,R.cars,T()),cur=T().slice(0,7);
- return `<p>Margen de los autos vendidos en el mes (cobrado − pagado − gastos del auto) más otros ingresos, menos los gastos de operación. Quedan fuera: transferencias, aportes, préstamos, gastos personales y «Por aclarar».</p>
+ return `<p>Margen de los autos vendidos en el mes (cobrado − pagado − gastos del auto) más otros ingresos, menos los gastos de operación. Quedan fuera: transferencias, aportes, préstamos, gastos personales, inversiones en otros negocios y «Por aclarar».</p>
  <section class="oc-metrics oc-six rt-kpi"><article><p>Gastos de operación / mes</p><strong>${money(be.opex)}</strong><small>promedio ${be.months.map(perLabel).join(', ')||'—'}</small></article><article><p>Margen promedio por auto</p><strong>${money(be.perCar)}</strong><small>${be.sample} autos, últimos 6 meses</small></article><article><p>Punto de equilibrio</p><strong>${be.cars===null?'—':be.cars.toFixed(1).replace('.',',')+' autos/mes'}</strong></article><article><p>Vendidos este mes</p><strong>${be.soldNow}</strong></article><article><p>Faltan este mes</p><strong>${be.missing===null?'—':be.missing}</strong><small>para cubrir los gastos</small></article><article><p>Margen del mes</p><strong>${money(be.marginNow)}</strong></article></section>
- <div class="oc-table-scroll"><table class="lq-table rt-table"><thead><tr><th>Mes</th><th>Autos</th><th>Margen autos</th><th>Otros ingresos</th><th>Gastos fijos</th><th>Gastos variables</th><th>Resultado</th><th>Personales</th><th>Por aclarar</th><th>Sin asignar</th></tr></thead><tbody>
- ${rows.slice().reverse().map(r=>`<tr${r.month===cur?' class="rt-current"':''}><td><button class="lq-link" data-rt-open="M${r.month}">${perLabel(r.month)}</button></td><td>${r.sold}${r.marginMissing?` <small>(${r.marginMissing} sin margen)</small>`:''}</td><td>${money(r.margin)}</td><td>${money(r.otherIn)}</td><td>${money(r.fixed)}</td><td>${money(r.variable)}</td><td class="${r.result<0?'rt-neg':'rt-pos'}"><b>${money(r.result)}</b></td><td>${money(r.personal)}</td><td>${money(r.aclarar)}</td><td>${r.unassignedN?money(r.unassigned)+` <small>(${r.unassignedN})</small>`:'—'}</td></tr>
-  ${s.open['M'+r.month]?`<tr class="rt-detail"><td colspan="10">${Object.entries(r.expenses).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="oc-chip">${esc(k)} ${money(v)}</span>`).join(' ')||'Sin gastos.'}</td></tr>`:''}`).join('')}
+ <div class="oc-table-scroll"><table class="lq-table rt-table"><thead><tr><th>Mes</th><th>Autos</th><th>Margen autos</th><th>Otros ingresos</th><th>Gastos fijos</th><th>Gastos variables</th><th>Resultado</th><th>Personales</th><th>Otros negocios</th><th>Por aclarar</th><th>Sin asignar</th></tr></thead><tbody>
+ ${rows.slice().reverse().map(r=>`<tr${r.month===cur?' class="rt-current"':''}><td><button class="lq-link" data-rt-open="M${r.month}">${perLabel(r.month)}</button></td><td>${r.sold}${r.marginMissing?` <small>(${r.marginMissing} sin margen)</small>`:''}</td><td>${money(r.margin)}</td><td>${money(r.otherIn)}</td><td>${money(r.fixed)}</td><td>${money(r.variable)}</td><td class="${r.result<0?'rt-neg':'rt-pos'}"><b>${money(r.result)}</b></td><td>${money(r.personal)}</td><td>${money(r.inversion)}</td><td>${money(r.aclarar)}</td><td>${r.unassignedN?money(r.unassigned)+` <small>(${r.unassignedN})</small>`:'—'}</td></tr>
+  ${s.open['M'+r.month]?`<tr class="rt-detail"><td colspan="11">${Object.entries(r.expenses).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="oc-chip">${esc(k)} ${money(v)}</span>`).join(' ')||'Sin gastos.'}</td></tr>`:''}`).join('')}
  </tbody></table></div>`;
 }
 function summaryCard(){
