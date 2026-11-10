@@ -107,8 +107,9 @@ function consignment(c,op,owner){
  if(dir)return {...base,comision:k.cobrado,comisionImplicita:null,saldo:0,pendiente:0,nota:'El comprador pagó directo al dueño; a la caja entró la comisión.'};
  if(!c.sold)return {...base,comision:pactada,comisionImplicita:null,saldo:null,pendiente:null,nota:'En venta.'};
  if(!k.cobrado)return {...base,comision:pactada,comisionImplicita:null,saldo:null,pendiente:null,nota:'La venta no entró a las cuentas: sin deuda calculable.'};
+ if(fv!==null&&Math.abs(k.cobrado-fv)>1000)return {...base,comision:pactada,comisionImplicita:null,saldo:null,pendiente:null,nota:'Cobrado en caja '+money(k.cobrado)+' de '+money(fv)+': faltan cobros por asignar al auto.'};
  const saldo=pactada===null?null:sale-pactada-desc;
- return {...base,comision:pactada,comisionImplicita:pactada===null?sale-k.pagado-desc:null,saldo,pendiente:saldo===null?null:saldo-k.pagado,nota:''};
+ return {...base,comision:pactada,comisionImplicita:pactada===null?sale-k.pagado-desc:null,saldo,pendiente:saldo===null?null:saldo-k.pagado,nota:saldo!==null&&saldo-k.pagado<-1000?'Se pagó más que el saldo: revisar pagos asignados.':''};
 }
 // Reglas: movimientos sin asignar cuyo texto calza el patrón y la dirección.
 function ruleMatches(movements,rule){
